@@ -160,4 +160,4 @@ cython_debug/
 #.idea/
 
 # User defined
-nanodrones_sim/controllers/pid_gatefollowing/data/*
+**/data

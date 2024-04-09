@@ -1,0 +1,58 @@
+#VRML_SIM R2023b utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/appearances/protos/Parquetry.proto"
+IMPORTABLE EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/balls/protos/Ball.proto"
+EXTERNPROTO "../protos/Crazyflie.proto"
+
+WorldInfo {
+}
+Viewpoint {
+  orientation -0.30219173754236267 0.4509457437530654 0.839838133185272 1.3469596083248938
+  position -2.897900872070368 -8.365902544470101 7.634814090401527
+}
+TexturedBackground {
+  texture "stadium"
+  luminosity 0.5
+}
+TexturedBackgroundLight {
+}
+RectangleArena {
+  floorSize 5 5
+  floorAppearance Parquetry {
+    type "light strip"
+  }
+}
+DEF imav2022-gate Solid {
+  translation 0 2 0
+  rotation 0 0 1 4.6928012867022945e-06
+  children [
+    DEF gatebody Shape {
+      appearance PBRAppearance {
+        baseColorMap ImageTexture {
+          url [
+            "textures/imav2022-gate/GateTex.png"
+          ]
+        }
+        roughness 1
+        metalness 0
+      }
+      geometry Mesh {
+        url [
+          "blender/imav2022-gate.dae"
+        ]
+      }
+    }
+  ]
+  boundingObject USE gatebody
+}
+DEF Crazyflie Crazyflie {
+  hidden linearVelocity_0 -1.0485506291057914e-06 -1.8183807002674283e-06 -2.019996854552948e-06
+  hidden angularVelocity_0 0.00012124844264438084 -6.994154520670404e-05 -4.106325363914355e-06
+  translation 1.0576075348581375e-05 1.1254502627462327e-05 0.01489964632598348
+  rotation 0.41938991053570934 -0.6856546784245406 0.5949703899316247 0.0001696241917545527
+  controller "openai_gym"
+  supervisor TRUE
+}
