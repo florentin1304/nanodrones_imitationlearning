@@ -117,8 +117,8 @@ if __name__ == "__main__":
     ##### Create track
     print('Generating track...', end='')
     tg = TrackGenerator(num_gate_poses=NUM_GATES)
-    # gate_poses = tg.generate_easy()
-    gate_poses = tg.generate()
+    gate_poses = tg.generate_easy()
+    # gate_poses = tg.generate()
     gate_square_poses = tg.to_gate_squares(gate_poses)
 
 
@@ -160,20 +160,13 @@ if __name__ == "__main__":
     hist = []
     while robot.step(timestep) != -1:
         dt = robot.getTime() - past_time
-        # DEBUG
-        # x = np.array([d.getValue() for d in dist_sensors])
-        # if (x != 2000.0).any():
-        #     print(x)
-        # if touch_sensor.getValue() != 0.0:
-        #     print("AAAAAAAAAA", i)
-        # print(rangeData)
-        
+
         ##### Get sensor data
         roll = imu.getRollPitchYaw()[0]
         pitch = imu.getRollPitchYaw()[1]
         yaw = imu.getRollPitchYaw()[2]
         yaw_rate = gyro.getValues()[2]
-        
+
         x_global = gps.getValues()[0]
         v_x_global = (x_global - past_x_global)/dt
         
@@ -199,7 +192,6 @@ if __name__ == "__main__":
 
 
         if RECORD:
-            # camera_array = np.array(camera.getImageArray())[:, :, ::-1]
             # Convert string to numpy array of uint8
             image_string = camera.getImage()
             image_data = np.frombuffer(image_string, dtype=np.uint8)
@@ -208,9 +200,10 @@ if __name__ == "__main__":
             image_name = recorder.add_image(rgb_matrix)
 
             depth_array = range_finder.getRangeImage(data_type="buffer")
-            depth_array = np.ctypeslib.as_array(depth_array, (range_finder.getWidth(), range_finder.getHeight()))
-            depth_array = depth_array / range_finder.getMaxRange()
-            depth_array = depth_array*255
+            depth_array = np.ctypeslib.as_array(depth_array, 
+                                                (range_finder.getWidth(), range_finder.getHeight())
+                                                )
+            depth_array = 255* (depth_array / range_finder.getMaxRange())
             depth_array[depth_array == float('inf')] = 255
             depth_array = depth_array.astype(np.uint8)
             depth_image_name = recorder.add_image(depth_array, 'depth')
@@ -254,18 +247,14 @@ if __name__ == "__main__":
                                         roll, pitch, yaw_rate,
                                         z_global, v_x, v_y)
         
-        # print("="*100)
-        # print(a)
-        # hist.append(a)
-        # print(f"{np.mean(hist, axis=0)=}\n  {np.std(hist, axis=0)=}\n  {np.max(hist, axis=0)=}\n {np.min(hist, axis=0)=}\n")
+        print(motor_power)
 
         m1_motor.setVelocity(-motor_power[0])
         m2_motor.setVelocity(motor_power[1])
         m3_motor.setVelocity(-motor_power[2])
         m4_motor.setVelocity(motor_power[3])
         
-        
-
+    
         past_time = robot.getTime()
         past_x_global = x_global
         past_y_global = y_global

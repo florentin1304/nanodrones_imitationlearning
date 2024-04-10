@@ -357,7 +357,7 @@ def joint(waypoints):
 
     # setup solver and solve
     m = osqp.OSQP()
-    m.setup(P=P, q=q, A=A, l=l, u=u)  # extra solver variables can be set here
+    m.setup(P=P, q=q, A=A, l=l, u=u, verbose=False)  # extra solver variables can be set here
     res = m.solve()
 
     # save to trajectory variable
@@ -582,13 +582,13 @@ def separate(waypoints):
         u = hstack([h, b])
 
         # setup solver and solve
-        m = osqp.OSQP()
+        m = osqp.OSQP(verbose=False)
         m.setup(P=P, q=q, A=A, l=l, u=u) # extra solver variables can be set here
         res = m.solve()
 
         # save to trajectory variable
         trajectory.append(res.x)
-        print("QP solution Number ", i, "following: ", res.x)
+        # print("QP solution Number ", i, "following: ", res.x)
 
     return trajectory
 
@@ -630,15 +630,15 @@ def planner(waypoint_arr, isJoint=True):
     return waypoints, trajectory
 
 #### generate trajectory mavveric
-def generate_waypoints_yaw(gates):
-    waypoint_array = [[0,0,0.5,0]]
+def generate_waypoints_yaw(pos,gates):
+    waypoint_array = [pos]
     for g in gates:
         yaw = g['rot'][3]
         waypoint_array.append(g['pos'].tolist() + [yaw])
     return waypoint_array
 
-def generate_trajectory_mavveric(gates):
-    wp_array = generate_waypoints_yaw(gates)
+def generate_trajectory_mavveric(pos,gates):
+    wp_array = generate_waypoints_yaw(pos,gates)
     waypoints, trajectory = planner(wp_array)
     x_path_tot = []
     y_path_tot = []
@@ -653,8 +653,6 @@ def generate_trajectory_mavveric(gates):
 
         z_path = trajectory[i][10] * t ** 4 + trajectory[i][11] * t ** 3 + trajectory[i][12] * t ** 2 + trajectory[i][13] * t + trajectory[i][14]
         z_path_tot += z_path.tolist()
-    print('fin')
 
     trajectory = array([x_path_tot, y_path_tot, z_path_tot]).T
-    print(trajectory.shape)
     return trajectory

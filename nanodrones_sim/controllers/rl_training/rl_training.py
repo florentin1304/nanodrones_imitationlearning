@@ -1,4 +1,6 @@
 import sys
+sys.path.append("..")
+from gatefollowing.gatefollowing import GateFollower
 from controller import Supervisor
 from track_generator import TrackGenerator
 from math import cos, sin, atan2
@@ -26,6 +28,8 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         self.__images_size = images_size
         self.__max_episode_steps = max_episode_steps
 
+        self.gatefollower = GateFollower(display_path=False, record=False)
+        
         ### Action space = [alt_command, roll_command, pitch_command, yaw_command]
         ### To be used in motor-mixing algorithm + limit motor command
         self.action_space = gym.spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float32)
@@ -74,7 +78,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
     
     def get_state_observation(self, actions):
         pos = np.array(self.__sensors['gps'].getValues())
-        dpos = (self.__past_pos - pos) / self.__dt
+        dpos = (pos - self.__past_pos) / self.__dt
         acceleration = self.__sensors['accelerometer'].getValues()
         rpy = self.__sensors['imu'].getRollPitchYaw()
         drpy = self.__sensors['gyro'].getValues()

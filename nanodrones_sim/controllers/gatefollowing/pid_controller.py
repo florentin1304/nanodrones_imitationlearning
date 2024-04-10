@@ -40,7 +40,7 @@ class pid_velocity_fixed_height_controller():
                 #kp_vel_xy:2,
         
         # Clip for stability
-        MAX_VEL_NORM = .70
+        MAX_VEL_NORM = .35
         if np.linalg.norm([desired_vx, desired_vy]) > MAX_VEL_NORM:
             desired_vx, desired_vy = MAX_VEL_NORM * np.array([desired_vx, desired_vy]) / np.linalg.norm([desired_vx, desired_vy]) 
 
@@ -85,7 +85,6 @@ class pid_velocity_fixed_height_controller():
         m2 = alt_command - roll_command - pitch_command - yaw_command
         m3 = alt_command + roll_command - pitch_command + yaw_command
         m4 = alt_command + roll_command + pitch_command - yaw_command
-        print(m1,m2,m3,m4)
         
         # Limit the motor command
         m1 = np.clip(m1, 0, 600)
