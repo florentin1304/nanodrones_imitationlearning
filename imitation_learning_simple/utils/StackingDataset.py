@@ -51,7 +51,6 @@ class StackingDataset(Dataset):
                 img_shape = pencil_image.shape[-2:]
                 
                 padding = torch.zeros(size=(2, *img_shape))
-                print(f"{padding.shape=}")
                 timeframes_tensor.append(padding)
 
                 continue
@@ -82,8 +81,6 @@ class StackingDataset(Dataset):
                 final_array = self.transform(final_array)
             
             final_array.unsqueeze(dim=0)
-
-            print(f"{final_array.shape=}")
             timeframes_tensor.append(final_array)
         
         timeframes_tensor = torch.stack(timeframes_tensor, dim=0)
