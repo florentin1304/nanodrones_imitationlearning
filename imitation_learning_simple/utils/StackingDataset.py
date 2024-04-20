@@ -44,7 +44,8 @@ class StackingDataset(Dataset):
         for i in range(1-self.max_hist, 1):
             # i is negative => going from 1-self.max_hist to 0, included (eg. -31 to 0, total 32)
             if self.data_frame.loc[idx+i, "index"] > self.data_frame.loc[idx, "index"] or \
-                self.data_frame.loc[idx+i, "run_name"] != self.data_frame.loc[idx, "run_name"]:
+                self.data_frame.loc[idx+i, "run_name"] != self.data_frame.loc[idx, "run_name"] or \
+                idx+i < 0:
                 pencil_name = self.data_frame.loc[idx+i, 'pencil_img']
                 pencil_path = os.path.join(self.csv_dir, "images", pencil_name+".png") 
                 pencil_image = Image.open(pencil_path) 
