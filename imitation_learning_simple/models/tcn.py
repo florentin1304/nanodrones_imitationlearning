@@ -1,16 +1,16 @@
 import torch
 import torch.nn as nn
 import pytorch_tcn
-from resnet import ResNet, BasicBlock
+from models.resnet import ResNet, BasicBlock
 
 
 class TCN(nn.Module):
-    def __init__(self, input_size, num_channels, kernel_size, dropout, dilation_factors, output_size):
+    def __init__(self):
         super(TCN, self).__init__()
         
         self.image_feature_extractor = ResNet(BasicBlock, [2, 2, 2, 2])
         self.image_feature_extractor.fc = nn.Identity()
-        self.tcn = TCN(
+        self.tcn = pytorch_tcn.TCN(
                 num_inputs = 512,
                 num_channels = [1024,2048,1024,1024,512],
                 kernel_size=2,

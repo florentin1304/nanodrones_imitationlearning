@@ -9,21 +9,23 @@ import tqdm
 import wandb
 
 from utils.StackingDataset import StackingDataset  # Assuming you saved the custom dataset class in a file named custom_dataset.py
-from models.simple_cnn import SimpleCNN  # Assuming you saved the custom CNN class in a file named custom_cnn.py
-from models.resnet import ResNet18
+# from models.simple_cnn import SimpleCNN  # Assuming you saved the custom CNN class in a file named custom_cnn.py
+# from models.resnet import ResNet18
+from models.tcn import TCN
 
-BATCH_SIZE = 32
 MAX_HIST_SIZE = 32
+BATCH_SIZE = 32
+
 wandb.init(
     # set the wandb project where this run will be logged
     mode="disabled",
-    name="ResNet18",
+    name="TCN",
     project="imitation_learning",
     entity="udrea-florentin00",
     # track hyperparameters and run metadata
     config={
     "learning_rate": 0.01,
-    "architecture": "ResNet18",
+    "architecture": "TCN",
     "dataset": "100runs-norand",
     "epochs": 20,
     }
@@ -63,12 +65,12 @@ test_size = len(dataset) - train_size - val_size
 train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
 
 # Create DataLoader instances for train, validation, and test sets
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE)
 test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE)
 
 # Initialize the model
-model = ResNet18()
+model = TCN()
 
 # Define loss function and optimizer
 criterion = nn.MSELoss()  # Mean Squared Error loss for regression
@@ -81,7 +83,6 @@ waiting_epochs = 0
 waiting_epochs_threshold = 3
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"{device=}")
-# model.load_state_dict(torch.load('./imitation_learning_simple/weights/resnet_best.pth'))
 model.to(device)
 
 best_val_loss = float('inf')
@@ -135,7 +136,7 @@ for epoch in range(num_epochs):
         print(f"Saving new model: old loss {best_val_loss} > new loss {validation_loss}")
         best_val_loss = validation_loss
         waiting_epochs = 0
-        torch.save(model.state_dict(), os.path.join(weights_path, "resnet_best.pth"))
+        torch.save(model.state_dict(), os.path.join(weights_path, "TCN_best.pth"))
     else:
         waiting_epochs += 1
         if waiting_epochs >= waiting_epochs_threshold:
