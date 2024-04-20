@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset
 from utils.pencil_filter import PencilFilter
+from torchvision.transforms import Resize
 
 class StackingDataset(Dataset):
     def __init__(self, csv_dir, transform=None, pencil=True, max_hist=10):
@@ -20,7 +21,8 @@ class StackingDataset(Dataset):
         self.transform = transform
 
         self.pencil_filter = PencilFilter() if pencil else None
-
+        self.resize = resize = Resize((84,84))
+        
         # Initialize an empty DataFrame with columns
         self.data_frame = pd.DataFrame()
 
@@ -50,7 +52,7 @@ class StackingDataset(Dataset):
 
                 img_shape = pencil_image.shape[-2:]
                 
-                padding = torch.zeros(size=(2, *img_shape))
+                padding = torch.zeros(size=(2, 84, 84))
                 timeframes_tensor.append(padding)
 
                 continue
@@ -80,6 +82,7 @@ class StackingDataset(Dataset):
             if self.transform:
                 final_array = self.transform(final_array)
             
+            final_array = self.resize(final_array)
             final_array.unsqueeze(dim=0)
             timeframes_tensor.append(final_array)
         
