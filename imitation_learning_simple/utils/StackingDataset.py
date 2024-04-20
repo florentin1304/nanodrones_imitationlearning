@@ -40,14 +40,25 @@ class StackingDataset(Dataset):
         timeframes_tensor = []
         info = []
         for i in range(1-self.max_hist, 1):
-            # i is negative => going from -self.max_hist to 0 (eg. -32 to 0)
+            # i is negative => going from 1-self.max_hist to 0, included (eg. -31 to 0, total 32)
             if self.data_frame.loc[idx+i, "index"] > self.data_frame.loc[idx, "index"] or \
                 self.data_frame.loc[idx+i, "run_name"] != self.data_frame.loc[idx, "run_name"]:
-                continue 
+                pencil_name = self.data_frame.loc[idx+i, 'pencil_img']
+                pencil_path = os.path.join(self.csv_dir, "images", pencil_name+".png") 
+                pencil_image = Image.open(pencil_path) 
+                pencil_image = np.array(pencil_image)
+
+                img_shape = pencil_image.shape[-2:]
+                
+                padding = torch.zeros(size=(2, *img_shape))
+                print(f"{padding.shape=}")
+                timeframes_tensor.append(padding)
+
+                continue
             
             # info.append([self.data_frame.loc[idx+i, "index"], self.data_frame.loc[idx+i, "run_name"] ])
 
-            pencil_name = self.data_frame.loc[idx, 'pencil_img']
+            pencil_name = self.data_frame.loc[idx+i, 'pencil_img']
             pencil_path = os.path.join(self.csv_dir, "images", pencil_name+".png") 
             pencil_image = Image.open(pencil_path)
             pencil_image = np.array(pencil_image)
@@ -55,7 +66,7 @@ class StackingDataset(Dataset):
                 pencil_image = np.expand_dims(pencil_image, axis=0)
 
             # Read depth image
-            depth_name = self.data_frame.loc[idx, 'depth_img']
+            depth_name = self.data_frame.loc[idx+i, 'depth_img']
             depth_path = os.path.join(self.csv_dir, "images", depth_name+".png") 
             depth_image = Image.open(depth_path)
             depth_array = np.array(depth_image)
@@ -71,6 +82,8 @@ class StackingDataset(Dataset):
                 final_array = self.transform(final_array)
             
             final_array.unsqueeze(dim=0)
+
+            print(f"{final_array.shape=}")
             timeframes_tensor.append(final_array)
         
         timeframes_tensor = torch.stack(timeframes_tensor, dim=0)
