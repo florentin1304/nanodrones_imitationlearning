@@ -46,16 +46,8 @@ class StackingDataset(Dataset):
             pad = False
             
             if self.isInvalidHistory(idx, idx+i):
-                pencil_name = self.data_frame.loc[idx+i, 'pencil_img']
-                pencil_path = os.path.join(self.csv_dir, "images", pencil_name+".png") 
-                pencil_image = Image.open(pencil_path) 
-                pencil_image = np.array(pencil_image)
-
-                img_shape = pencil_image.shape[-2:]
-                
                 padding = torch.zeros(size=(2, 168, 168))
                 timeframes_tensor.append(padding)
-
                 continue
             
             # info.append([self.data_frame.loc[idx+i, "index"], self.data_frame.loc[idx+i, "run_name"] ])
