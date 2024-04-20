@@ -106,7 +106,7 @@ for epoch in range(num_epochs):
 
         running_loss += loss.item() * images.size(0)
         i += BATCH_SIZE
-        wandb.log({"train_loss": loss.item()})
+        wandb.log({"train_loss_running": loss.item()})
 
 
     epoch_loss = running_loss / len(train_dataset)
