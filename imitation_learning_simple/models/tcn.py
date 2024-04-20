@@ -50,5 +50,8 @@ class TCN(nn.Module):
 
         return output
 
-
+    def print_devices(self):
+        print(list(self.image_feature_extractor.parameters())[0].device)
+        print(list(self.tcn.parameters())[0].device)
+        print(list(self.regressor.parameters())[0].device)
 

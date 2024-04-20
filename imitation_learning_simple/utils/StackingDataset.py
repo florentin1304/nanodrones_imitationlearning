@@ -21,7 +21,7 @@ class StackingDataset(Dataset):
         self.transform = transform
 
         self.pencil_filter = PencilFilter() if pencil else None
-        self.resize = resize = Resize((84,84))
+        self.resize = resize = Resize((168,168))
         
         # Initialize an empty DataFrame with columns
         self.data_frame = pd.DataFrame()
@@ -43,10 +43,9 @@ class StackingDataset(Dataset):
         info = []
         for i in range(1-self.max_hist, 1):
             # i is negative => going from 1-self.max_hist to 0, included (eg. -31 to 0, total 32)
-            if idx+i < 0 or \
-                self.data_frame.loc[idx+i, "index"] > self.data_frame.loc[idx, "index"] or \
-                self.data_frame.loc[idx+i, "run_name"] != self.data_frame.loc[idx, "run_name"]:
-                
+            pad = False
+            
+            if self.isInvalidHistory(idx, idx+i):
                 pencil_name = self.data_frame.loc[idx+i, 'pencil_img']
                 pencil_path = os.path.join(self.csv_dir, "images", pencil_name+".png") 
                 pencil_image = Image.open(pencil_path) 
@@ -54,7 +53,7 @@ class StackingDataset(Dataset):
 
                 img_shape = pencil_image.shape[-2:]
                 
-                padding = torch.zeros(size=(2, 84, 84))
+                padding = torch.zeros(size=(2, 168, 168))
                 timeframes_tensor.append(padding)
 
                 continue
@@ -107,3 +106,11 @@ class StackingDataset(Dataset):
         ])
             
         return timeframes_tensor, label
+    
+    def isInvalidHistory(self, idx, idx_hist):
+        if idx_hist < 0: 
+            return True
+        if self.data_frame.loc[idx_hist, "index"] > self.data_frame.loc[idx, "index"] or \
+            self.data_frame.loc[idx_hist, "run_name"] != self.data_frame.loc[idx, "run_name"]:
+            return True
+        return False

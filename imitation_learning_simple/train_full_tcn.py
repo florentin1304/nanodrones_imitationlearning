@@ -13,7 +13,7 @@ from utils.StackingDataset import StackingDataset  # Assuming you saved the cust
 # from models.resnet import ResNet18
 from models.tcn import TCN
 
-MAX_HIST_SIZE = 30
+MAX_HIST_SIZE = 32
 BATCH_SIZE = 16
 print(f"{BATCH_SIZE=} ¬ {MAX_HIST_SIZE=}")
 wandb.init(
@@ -87,7 +87,7 @@ model.to(device)
 
 best_val_loss = float('inf')
 for epoch in range(num_epochs):
-    print( "="*80, f"EPOCH {epoch}", "="*80)
+    print( "="*60, f"EPOCH {epoch}", "="*60)
     model.train()
     running_loss = 0.0
 
