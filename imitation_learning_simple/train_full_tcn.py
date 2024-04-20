@@ -14,8 +14,8 @@ from utils.StackingDataset import StackingDataset  # Assuming you saved the cust
 from models.tcn import TCN
 
 MAX_HIST_SIZE = 30
-BATCH_SIZE = 16
-
+BATCH_SIZE = 8
+print(f"{BATCH_SIZE=} ¬ {MAX_HIST_SIZE=}")
 wandb.init(
     # set the wandb project where this run will be logged
     mode="disabled",
