@@ -1,25 +1,31 @@
 from controller import Robot, Supervisor
 from controller import TouchSensor
-from pid_controller import pid_velocity_fixed_height_controller
 import numpy as np
 from math import cos, sin, atan2
-
-from pathplanner import PathPlanner
-from track_generator import TrackGenerator
-from recorder import Recorder
-from maveric_trajectory_planner import generate_trajectory_mavveric
-from copy import deepcopy
-
 from scipy.spatial.transform import Rotation as R
+from copy import deepcopy
+import sys
+sys.path.append("..")
+sys.path.append("../../..") #home
 
+from controller_utils.pid_controller import pid_velocity_fixed_height_controller
+from controller_utils.pathplanner import PathPlanner
+from controller_utils.track_generator import TrackGenerator
+from controller_utils.recorder import Recorder
+from controller_utils.maveric_trajectory_planner import generate_trajectory_mavveric
+
+from imitation_learning_simple.utils.pencil_filter import PencilFilter
 
 class GateFollower(Supervisor):
-    def __init__(self, record=False, display_path=True):
+    def __init__(self, record=False, display_path=True, randomisation=False):
         super().__init__()
 
         self.__record = record
         self.__display_path_flag = display_path
+        self.__env_randomisation = randomisation
         self.__gate_node = self.getFromDef('imav2022-gate')
+
+        self.__pencil_filter = PencilFilter()
 
         self.__motors = []
         self.__sensors = {}
@@ -69,8 +75,25 @@ class GateFollower(Supervisor):
         # Initialise controller
         self.pid_controller = pid_velocity_fixed_height_controller()
 
-        # TODO: Randomise the environment
-        num_gates = 4
+        # Randomise the environment
+        if self.__env_randomisation:
+            bg = np.random.choice(
+                [
+                "dawn_cloudy_empty", "dusk", "empty_office", "entrance_hall", "factory", "mars", "morning_cloudy_empty", 
+                "mountains", "music_hall", "noon_building_overcast", "noon_cloudy_countryside", "noon_cloudy_empty", 
+                "noon_cloudy_mountains", "noon_park_empty", "noon_stormy_empty", "noon_sunny_empty", "noon_sunny_garden", 
+                "stadium", "stadium_dry", "twilight_cloudy_empty"
+                ])
+            self.getFromDef("TexBG").getField('texture').setSFString(bg)
+            self.getFromDef("TexBG").getField('luminosity').setSFFloat(
+                np.random.uniform(0.1, 2)
+            )
+            self.getFromDef("TexBGlight").getField('texture').setSFString(bg)
+            self.getFromDef("TexBGlight").getField('luminosity').setSFFloat(
+                np.random.uniform(0.1, 2)
+            )
+
+        num_gates = 3
 
         # Setup recorder
         if self.__record:
@@ -85,7 +108,8 @@ class GateFollower(Supervisor):
                                         "yaw_rate_sp",
                                         "alt_command", "roll_command", "pitch_command", "yaw_command",
                                         "camera_img",
-                                        "depth_img"])
+                                        "depth_img",
+                                        "pencil_img"])
             
         # Generate new track and trajectory
         tg = TrackGenerator(num_gate_poses=num_gates)
@@ -155,11 +179,16 @@ class GateFollower(Supervisor):
             rgb_matrix = image_data[:, :, :3]
             image_name = self.recorder.add_image(rgb_matrix)
 
+            pencil_matrix = self.__pencil_filter.apply(rgb_matrix)
+            pencil_matrix = np.array(pencil_matrix).transpose(1,2,0) * 255
+            pencil_matrix = pencil_matrix.astype(np.uint8)
+            pencil_name = self.recorder.add_image(pencil_matrix, 'pencil')
+
             depth_array = self.__sensors['rangefinder'].getRangeImage(data_type="buffer")
             depth_array = np.ctypeslib.as_array(depth_array, 
                                                 (self.__sensors['rangefinder'].getWidth(), self.__sensors['rangefinder'].getHeight())
                                                 )
-            depth_array = 255* (depth_array / self.__sensors['rangefinder'].getMaxRange())
+            depth_array = 255 * (depth_array / self.__sensors['rangefinder'].getMaxRange())
             depth_array[depth_array == float('inf')] = 255
             depth_array = depth_array.astype(np.uint8)
             depth_image_name = self.recorder.add_image(depth_array, 'depth')
@@ -176,7 +205,8 @@ class GateFollower(Supervisor):
                                     yaw_desired, 
                                     *commands,
                                     image_name,
-                                    depth_image_name])
+                                    depth_image_name,
+                                    pencil_name])
 
 
         # Reset gate position
@@ -261,7 +291,8 @@ class GateFollower(Supervisor):
 
 if __name__ == "__main__":
     print("Starting simulation")
-    gf = GateFollower(record=True)
+    gf = GateFollower(record=False, display_path=True)
+    
     gf.reset()
 
     stop = False

@@ -160,16 +160,16 @@ PROTO Crazyflie [
       
       Camera {
         translation 0.03 0 0.01
-        fieldOfView 0.87
-        width 168
-        height 168
+        fieldOfView 1.52
+        width 324
+        height 324
       }
 
       RangeFinder {
         translation 0.03 0 0.01
         fieldOfView 1.52
-        width 168
-        height 168
+        width 324
+        height 324
         name "range-finder"
         near 0.001
         minRange 0.001
