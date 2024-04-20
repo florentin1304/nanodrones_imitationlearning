@@ -18,8 +18,7 @@ BATCH_SIZE = 16
 print(f"{BATCH_SIZE=} ¬ {MAX_HIST_SIZE=}")
 wandb.init(
     # set the wandb project where this run will be logged
-    mode="disabled",
-    name="TCN",
+    name="TCN-first_try",
     project="imitation_learning",
     entity="udrea-florentin00",
     # track hyperparameters and run metadata
@@ -65,7 +64,7 @@ test_size = len(dataset) - train_size - val_size
 train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
 
 # Create DataLoader instances for train, validation, and test sets
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE)
 test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE)
 
@@ -107,6 +106,7 @@ for epoch in range(num_epochs):
 
         running_loss += loss.item() * images.size(0)
         i += BATCH_SIZE
+        wandb.log({"train_loss": loss.item()})
 
 
     epoch_loss = running_loss / len(train_dataset)
