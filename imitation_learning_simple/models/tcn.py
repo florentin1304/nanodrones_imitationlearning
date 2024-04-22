@@ -32,7 +32,7 @@ class TCN(nn.Module):
         )
 
     def forward(self, x):
-        # x = (BATCH, TIME_STAMP, CHANNEL, H, W)
+        ### x = (BATCH, TIME_STAMP, CHANNEL, H, W)
         features_output = []
         for batch in x:
             batch_output = self.image_feature_extractor(batch)
@@ -40,6 +40,15 @@ class TCN(nn.Module):
 
         # features_output_tensor = (BATCH, TIMESTAMP, FEATURES)
         features_output_tensor = torch.stack(features_output,dim=0) 
+
+        # METHOD2
+        # old_x_shape = x.shape
+        # new_x_shape = (-1, *x.shape[-3:])
+
+        # x_reshaped = x.reshape(new_x_shape)
+
+        # features_output_tensor = self.image_feature_extractor(x_reshaped)
+        # features_output_tensor = features_output_tensor.reshape((*old_x_shape[:2], 512))
 
         # temporal_features_tensor = (BATCH, TIMESTAMP, FEATURES)
         temporal_features_tensor = self.tcn(features_output_tensor)

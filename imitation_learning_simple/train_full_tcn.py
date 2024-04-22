@@ -3,160 +3,59 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from torchvision.transforms import ToTensor, Normalize, Compose
+
 from pathlib import *
-import os
-import tqdm
-import wandb
+import argparse
 
 from utils.StackingDataset import StackingDataset  # Assuming you saved the custom dataset class in a file named custom_dataset.py
-# from models.simple_cnn import SimpleCNN  # Assuming you saved the custom CNN class in a file named custom_cnn.py
-# from models.resnet import ResNet18
+from models.resnet import ResNet18
 from models.tcn import TCN
+from Trainer import Trainer
 
-MAX_HIST_SIZE = 32
-BATCH_SIZE = 16
-print(f"{BATCH_SIZE=} ¬ {MAX_HIST_SIZE=}")
-wandb.init(
-    # set the wandb project where this run will be logged
-    name="TCN-first_try",
-    project="imitation_learning",
-    entity="udrea-florentin00",
-    # track hyperparameters and run metadata
-    config={
-    "learning_rate": 0.01,
-    "architecture": "TCN",
-    "dataset": "100runs-norand",
-    "epochs": 20,
-    }
-)
+def main(args):
+    t = Trainer(args)
+    t.train()
 
+    # Define dataset and transforms
+    # Mean of each channel: tensor([174.7335,   0.9116])
+    # Standard deviation of each channel: tensor([108.9636,   0.1411])
+    # Mean of labels:  tensor([ 5.5213e+01,  6.9066e-04, -5.0562e-03, -2.7119e-02])
+    # Standard deviation of labels:  tensor([1.5544, 0.2182, 0.2224, 0.2800])
+    # transform = Compose([
+    #     Normalize(mean=[174.7335,   0.9116], std=[108.9636,   0.1411])
+    # ])
 
-# Define dataset and transforms
-# Mean of each channel: tensor([174.7335,   0.9116])
-# Standard deviation of each channel: tensor([108.9636,   0.1411])
-# Mean of labels:  tensor([ 5.5213e+01,  6.9066e-04, -5.0562e-03, -2.7119e-02])
-# Standard deviation of labels:  tensor([1.5544, 0.2182, 0.2224, 0.2800])
-transform = Compose([
-    Normalize(mean=[174.7335,   0.9116], std=[108.9636,   0.1411])
-])
-
-output_transform = {
-    "mean": torch.Tensor([ 5.5213e+01,  6.9066e-04, -5.0562e-03, -2.7119e-02]),
-    "std": torch.Tensor([1.5544, 0.2182, 0.2224, 0.2800])
-}
+    # output_transform = {
+    #     "mean": torch.Tensor([ 5.5213e+01,  6.9066e-04, -5.0562e-03, -2.7119e-02]),
+    #     "std": torch.Tensor([1.5544, 0.2182, 0.2224, 0.2800])
+    # }
 
 
-curr_dir = os.path.dirname( os.path.abspath(__file__) )
-home_path = Path(curr_dir).parent.absolute()
-dataset_path = os.path.join(home_path, "nanodrones_sim", "data")
-weights_path = os.path.join(home_path, "imitation_learning_simple", "weights")
-dataset = StackingDataset(csv_dir=dataset_path, transform=transform, max_hist=MAX_HIST_SIZE)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
 
+    ### Training arguments
+    parser.add_argument("--batch_size", type=int, default=16, help="Size of the batch for training")
+    parser.add_argument("--hist_size", type=int, default=32, help="Number of timesteps to stack when getting data from dataset (only applicable if `tcn_*` model is used )")
+    parser.add_argument("--model", type=str, default="tcn_default", choices=["tcn_default", "resnet_default"], help="Type of model to use: resnet (no time information), tcn (time information)")
 
-# Split dataset into train, validation, and test sets
-train_ratio = 0.7
-val_ratio = 0.2
+    parser.add_argument("--stats_file_name", type=str, default="stats.json", help="Name of the file containing the statistics (mean, std) of each column in dataset")
+    parser.add_argument("--force_data_stats", action="store_true", help="Recompute the dataset stats even if config is found")
+    parser.add_argument("--avoid_input_normalization", action="store_true", help="Stop input normalization")
+    parser.add_argument("--avoid_output_normalization", action="store_true", help="Stop output normalization")
 
-train_size = int(train_ratio * len(dataset))
-val_size = int(val_ratio * len(dataset))
-test_size = len(dataset) - train_size - val_size
+    parser.add_argument("--num_epochs", type=int, default=20, help="Number of epochs to train the model")
+    parser.add_argument("--learning_rate", type=float, default=0.01, help="Starting learning rate")
+    parser.add_argument("--lr_scheduler_gamma", type=float, default=0.3, help="Muliply the learning rate by the gamma factor every \{args.lr_cheduler_step\} steps")
+    parser.add_argument("--lr_scheduler_step", type=int, default=2, help="Every how many epochs apply the gamma to the learning rate")
+    parser.add_argument("--patience_epochs", type=int, default=4, help="After how many epochs of not improving the validation score stop the training")
 
-train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
+    parser.add_argument("--disable_cuda", action="store_true", help="Even if cuda is available, dont use it")
 
-# Create DataLoader instances for train, validation, and test sets
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE)
-test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE)
+    # Optimizer arguments 
 
-# Initialize the model
-model = TCN()
-
-# Define loss function and optimizer
-criterion = nn.MSELoss()  # Mean Squared Error loss for regression
-optimizer = optim.Adam(model.parameters(), lr=0.005)
-scheduler = optim.lr_scheduler.StepLR(optimizer, gamma=0.3, step_size=3)
-
-# Train the model
-num_epochs = 20
-waiting_epochs = 0
-waiting_epochs_threshold = 3
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"{device=}")
-model.to(device)
-
-best_val_loss = float('inf')
-for epoch in range(num_epochs):
-    print( "="*60, f"EPOCH {epoch}", "="*60)
-    model.train()
-    running_loss = 0.0
-
-    pbar = tqdm.tqdm(train_loader)
-    i = 0
-    for images, labels in pbar:
-        pbar.set_description(f"Running loss: {running_loss/(i+1e-5) :.4}")
-
-        labels = (labels - output_transform['mean']) / output_transform['std']
-        images, labels = images.to(device), labels.to(device)
-        outputs = model(images)
-
-        optimizer.zero_grad()
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-
-        running_loss += loss.item() * images.size(0)
-        i += BATCH_SIZE
-        wandb.log({"train_loss_running": loss.item()})
-
-
-    epoch_loss = running_loss / len(train_dataset)
-    print(f"Epoch [{epoch+1}/{num_epochs}], Train Loss: {epoch_loss:.4f}")
-    scheduler.step()
-
-    # Validate the model
-    model.eval()
-    total_loss = 0.0
-    num_samples = 0
-    with torch.no_grad():
-        for images, labels in val_loader:
-            labels = (labels - output_transform['mean']) / output_transform['std']
-            images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            total_loss += loss.item() * images.size(0)
-            num_samples += len(images)
-    validation_loss = total_loss / num_samples
-    print(f"Validation Loss: {validation_loss:.4f}")
-    wandb.log({"train_loss": epoch_loss,
-               "val_loss": validation_loss, 
-               "epoch": epoch})
-
-
-    if validation_loss < best_val_loss:
-        print(f"Saving new model: old loss {best_val_loss} > new loss {validation_loss}")
-        best_val_loss = validation_loss
-        waiting_epochs = 0
-        torch.save(model.state_dict(), os.path.join(weights_path, "TCN_best.pth"))
-    else:
-        waiting_epochs += 1
-        if waiting_epochs >= waiting_epochs_threshold:
-            break
-
-# Test the model
-model.eval()
-total_loss = 0.0
-num_samples = 0
-with torch.no_grad():
-    for images, labels in test_loader:
-        labels = (labels - output_transform['mean']) / output_transform['std']
-        images, labels = images.to(device), labels.to(device)
-        outputs = model(images)
-        loss = criterion(outputs, labels)
-        total_loss += loss.item() * images.size(0)
-        num_samples += len(images)
-    
+    # Wandb arguments
     
 
-test_loss = total_loss / num_samples
-wandb.log({"test_loss": test_loss})
-print(f"Test Loss: {test_loss:.4f}") 
+    args = parser.parse_args()
+    main(args)

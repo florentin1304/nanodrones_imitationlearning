@@ -8,9 +8,8 @@ import tqdm
 import matplotlib.pyplot as plt
 import cv2
 
-from utils.StackingDataset import StackingDataset 
-from utils.OnlineMeanVariance import OnlineMeanVariance
-from utils.pencil_filter import PencilFilter
+from utils.StackingDataset import StackingDataset
+
 
 def calculate_mean_std(): 
     # Define dataset and transforms
@@ -32,7 +31,8 @@ def calculate_mean_std():
     label_sum_sq = torch.zeros(4)
     label_count = 0
     
-    for img, label in tqdm.tqdm(dataset):
+    for i in tqdm.tqdm(len(dataset)):
+        img, label = dataset[i]
         pencil_image = img[0:1, :, :]
         depth_image = img[1:, :, :]
 
