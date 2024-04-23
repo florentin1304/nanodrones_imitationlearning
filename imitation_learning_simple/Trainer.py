@@ -28,6 +28,8 @@ class Trainer:
         self.datastats_path = os.path.join(self.home_path, "imitation_learning_simple", "dataset_stats")
         self.output_path = os.path.join(self.home_path, "imitation_learning_simple", "output")
 
+        ### TODO: Set seed
+
         ### Load stats
         if not (self.args.avoid_input_normalization and self.args.avoid_output_normalization):
             stats_file_path = os.path.join(self.datastats_path, self.args.stats_file_name)
@@ -41,15 +43,23 @@ class Trainer:
         ### Get dataset and model type
         transform = None
 
-        if self.args.model == "tcn_default":
+        if self.args.model == "tcn":
             self.dataset = StackingDataset(csv_dir=self.dataset_path, stats_dict=stats, transform=transform, max_hist=self.args.hist_size)
             self.model = TCN()
-        elif self.args.model == "resnet_default":
+        elif self.args.model == "resnet":
             self.dataset = StackingDataset(csv_dir=self.dataset_path, stats_dict=stats, transform=transform, max_hist=None)
             self.model = ResNet18()
         else:
             raise Exception(f"Model argument {self.args.model} not recognised")
         
+        # Load weights if necessary
+        if self.args.load_model != "":
+            if not(self.args.load_model.endswith(".pth") or self.args.load_model.endswith(".pt")):
+                raise Exception("Weights file should end with .pt or .pth")
+            self.model.load_state_dict(
+                torch.load( os.join.path(self.weights_path, self.args.load_model) )
+            )
+
         ### Get device
         self.device = torch.device(
                     "cuda" if (torch.cuda.is_available() and not self.args.disable_cuda) else "cpu"
@@ -73,6 +83,15 @@ class Trainer:
 
         # Define criterion
         self.criterion = nn.MSELoss()  # Mean Squared Error loss for regression
+
+        ### Init Wandb
+
+        wandb.init(
+            mode=self.args.wandb_mode,
+            entity="udrea-florentin00",
+            name=self.args.model,
+            config= vars(self.args)
+        )
 
     def train(self):
         print("=== Start training ===")
@@ -135,7 +154,7 @@ class Trainer:
 
             running_loss += loss.item() * images.size(0)
             i += self.args.batch_size
-            # wandb.log({"train_loss_running": loss.item()})
+            wandb.log({"train_loss_running": loss.item()})
         return running_loss / (i+1e-5)
 
     def run_validation(self):
