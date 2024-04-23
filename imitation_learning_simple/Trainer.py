@@ -64,6 +64,7 @@ class Trainer:
         self.device = torch.device(
                     "cuda" if (torch.cuda.is_available() and not self.args.disable_cuda) else "cpu"
                 )
+        self.model.to(self.device)
         print(f"Working on {self.device}")
 
         # Split dataset into train, validation, and test sets
