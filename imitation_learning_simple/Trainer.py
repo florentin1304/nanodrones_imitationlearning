@@ -89,6 +89,7 @@ class Trainer:
 
         wandb.init(
             mode=self.args.wandb_mode,
+            project="imitation_learning",
             entity="udrea-florentin00",
             name=self.args.model,
             config= vars(self.args)
@@ -108,7 +109,7 @@ class Trainer:
         
         for epoch in range(self.args.num_epochs):
             ### Run epoch
-            print( "="*60, f"EPOCH {epoch}", "="*60)
+            print( "="*25, f"EPOCH {epoch}", "="*25)
             epoch_loss = self.run_epoch()
             self.scheduler.step()
             print(f"Epoch [{epoch+1}/{self.args.num_epochs}], Train Loss: {epoch_loss:.4f}")
