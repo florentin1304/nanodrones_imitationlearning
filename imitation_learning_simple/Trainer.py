@@ -47,7 +47,7 @@ class Trainer:
             self.dataset = StackingDataset(csv_dir=self.dataset_path, stats_dict=stats, transform=transform, max_hist=self.args.hist_size)
             self.model = TCN()
         elif self.args.model == "resnet":
-            self.dataset = StackingDataset(csv_dir=self.dataset_path, stats_dict=stats, transform=transform, max_hist=None)
+            self.dataset = StackingDataset(csv_dir=self.dataset_path, stats_dict=stats, transform=transform, max_hist=-1)
             self.model = ResNet18()
         else:
             raise Exception(f"Model argument {self.args.model} not recognised")
