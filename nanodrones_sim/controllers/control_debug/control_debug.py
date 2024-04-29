@@ -25,8 +25,6 @@ class GateFollower(Supervisor):
         self.__env_randomisation = randomisation
         self.__gate_node = self.getFromDef('imav2022-gate')
 
-        self.__pencil_filter = PencilFilter()
-
         self.__motors = []
         self.__sensors = {}
         self.__current_waypoint = 0
@@ -93,11 +91,11 @@ class GateFollower(Supervisor):
                 np.random.uniform(0.1, 2)
             )
 
-        num_gates = 3
+
 
         # Setup recorder
         if self.__record:
-            self.recorder = Recorder({'randomisation': False})
+            self.recorder = Recorder({'randomisation': False}, save_dir='data_debug')
             self.recorder.set_headers(["x", "y", "z", "roll", "pitch", "yaw", 
                                         "gate_x","gate_y", "gate_z", "gate_yaw", 
                                         "vx_global", "vy_global", "vz_global",
@@ -107,24 +105,30 @@ class GateFollower(Supervisor):
                                         "vx_local_sp", "vy_local_sp", 
                                         "alt_sp", 
                                         "yaw_rate_sp",
-                                        "alt_command", "roll_command", "pitch_command", "yaw_command",
-                                        "camera_img",
-                                        "depth_img",
-                                        "pencil_img"])
+                                        "alt_command", "roll_command", "pitch_command", "yaw_command"])
             
-        # Generate new track and trajectory
-        tg = TrackGenerator(num_gate_poses=num_gates)
-        self.__gate_poses = tg.generate()
-        # self.__gate_poses = tg.generate_easy()
-        self.__gate_square_poses = tg.to_gate_squares(self.__gate_poses)
+        self.waypoints = [
+            [0, 0, 1],
+            [2, 0, 3],
+            [0, 0, 3],
+            [5, 0, 1],
+        ]
 
-        trajectory = generate_trajectory_mavveric(self.__sensors['gps'].getValues(), self.__gate_square_poses)
-        self.__pathplanner = PathPlanner(trajectory=trajectory)
-        if self.__display_path_flag and not self.__record: 
-            self.__display_path(trajectory)
-        
-        self.__current_waypoint = 0
-        self.__update_gate_pose()
+        trajectory = []
+        for i in range(1,len(self.waypoints)):
+            delta = np.linalg.norm(
+                np.array(self.waypoints[i]) - np.array(self.waypoints[i-1])
+            )
+            num = int(delta)*20
+            x = np.linspace(self.waypoints[i-1][0], self.waypoints[i][0], num)
+            y = np.linspace(self.waypoints[i-1][1], self.waypoints[i][1], num)
+            z = np.linspace(self.waypoints[i-1][2], self.waypoints[i][2], num)
+            for j in range(num):
+                trajectory.append([x[j], y[j], z[j]])
+
+        trajectory = np.array(trajectory)
+
+        self.__pathplanner = PathPlanner(trajectory=trajectory) 
 
         # Initialise state variables
         self.__past_motor_power = np.array([-1,1,-1,1])
@@ -156,16 +160,18 @@ class GateFollower(Supervisor):
         # Get pathplanner update
         drone_state = np.hstack([pos, rpy])
         gate_position = self.__gate_node.getPosition()
-        v_target, yaw_desired, des_height, fin = self.__pathplanner(drone_state, gate_position)
-        if robot.getTime() < 5:
-            v_target = [0,0]
-            des_height = 1 
+        if self.__num_steps < 300:
+            vx_target, vy_target, yaw_desired, des_height = 0,0,0,1
+            fin = False
+        else:
+            v_target, yaw_desired, des_height, fin = self.__pathplanner(drone_state, gate_position)
+            vx_target, vy_target = v_target
 
         # PID velocity controller with fixed height
         roll, pitch, yaw = rpy
         roll_rate, pitch_rate, yaw_rate = drpy
         x_global, y_global, z_global = pos
-        motor_power, commands = self.pid_controller.pid(self.__dt, v_target[0], v_target[1],
+        motor_power, commands = self.pid_controller.pid(self.__dt, vx_target, vy_target,
                                         yaw_desired, des_height,
                                         roll, pitch, yaw_rate,
                                         z_global, v_x, v_y)
@@ -176,64 +182,35 @@ class GateFollower(Supervisor):
 
         # Record data
         if self.__record and self.__past_time != 0:
-            image_string = self.__sensors['camera'].getImage()
-            image_data = np.frombuffer(image_string, dtype=np.uint8)
-            image_data = image_data.reshape((self.__sensors['camera'].getHeight(), self.__sensors['camera'].getWidth(), 4))
-            rgb_matrix = image_data[:, :, :3]
-            image_name = self.recorder.add_image(rgb_matrix)
-
-            pencil_matrix = self.__pencil_filter.apply(rgb_matrix)
-            pencil_matrix = np.array(pencil_matrix).transpose(1,2,0) * 255
-            pencil_matrix = pencil_matrix.astype(np.uint8)
-            pencil_name = self.recorder.add_image(pencil_matrix, 'pencil')
-
-            depth_array = self.__sensors['rangefinder'].getRangeImage(data_type="buffer")
-            depth_array = np.ctypeslib.as_array(depth_array, 
-                                                (self.__sensors['rangefinder'].getWidth(), self.__sensors['rangefinder'].getHeight())
-                                                )
-            depth_array = 255 * (depth_array / self.__sensors['rangefinder'].getMaxRange())
-            depth_array[depth_array == float('inf')] = 255
-            depth_array = depth_array.astype(np.uint8)
-            depth_image_name = self.recorder.add_image(depth_array, 'depth')
-
-            gate_state = self.__get_current_gate_pos()
-            current_pos_sp = self.__pathplanner.getCurrentSP()
-
+            current_pos_sp = [-1, -1, -1]
+            gate_state = {'pos': [-1,-1,-1], 'rot': [-1,-1,-1,-1]}
             self.recorder.add_row([pos[0], pos[1], pos[2], rpy[0], rpy[1], rpy[2], 
                                     *gate_state['pos'], gate_state['rot'][3], 
                                     dpos[0], dpos[1], dpos[2],
                                     dpos_ego[0], dpos_ego[1],
                                     drpy[0],drpy[1],drpy[2],
                                     current_pos_sp[0], current_pos_sp[1], current_pos_sp[2],
-                                    v_target[0], v_target[1], 
+                                    vx_target, vy_target, 
                                     des_height,
                                     yaw_desired, 
-                                    *commands,
-                                    image_name,
-                                    depth_image_name,
-                                    pencil_name])
+                                    *commands])
 
 
-        # Reset gate position
-        if self.__is_passing_through_gate(pos):
-            self.__current_waypoint += 1
-            if self.__current_waypoint == len(self.__gate_poses):
-                print("Finished track... restarting simulation")
-                if self.__record:
+
+
+        if self.__num_steps >= 2500 or fin:
+            print("End of debug run")
+            if self.__record:
                     self.recorder.save_data()
-
-                ### TODO: Add way to distinguish between reset ending or close-sim ending
-                self.reset()
-            else:
-                self.__update_gate_pose()
-
-        if robot.getTime() > 5 and bool(self.__sensors['touch_sensor'].getValue()):
-            print("Drone touched... resetting simulation")
             self.reset()
 
-        if abs(rpy[0]) > np.pi/2 or abs(rpy[1]) > np.pi/2:
-            print("Drone ribaltated... resetting simulation")
-            self.reset()
+        # if self.__num_steps > 500 and bool(self.__sensors['touch_sensor'].getValue()):
+        #     print("Drone touched... resetting simulation")
+        #     self.reset()
+
+        # if abs(rpy[0]) > np.pi/2 or abs(rpy[1]) > np.pi/2:
+        #     print("Drone ribaltated... resetting simulation")
+        #     self.reset()
 
         # Update simulation and controller values
         self.__num_steps += 1
@@ -296,7 +273,7 @@ class GateFollower(Supervisor):
 
 if __name__ == "__main__":
     print("Starting simulation")
-    gf = GateFollower(record=False, display_path=True)
+    gf = GateFollower(record=True)
     
     gf.reset()
 

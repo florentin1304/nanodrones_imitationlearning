@@ -28,7 +28,7 @@ def calc_time(start, end):
     Calculate a fitting time for the trajectory between two waypoints.
     """
     distance3D = sqrt((start[0]-end[0])**2 + (start[1]-end[1])**2 + (start[2]-end[2])**2)
-    time = distance3D  # ..where an engineer cries and a programmer sees an easy solution
+    time = distance3D  # ... where an engineer cries and a programmer sees an easy solution
     return time
 
 def joint(waypoints):
@@ -632,13 +632,17 @@ def planner(waypoint_arr, isJoint=True):
 #### generate trajectory mavveric
 def generate_waypoints_yaw(pos,gates):
     pos_higher = pos.copy()
-    pos_higher[2] = pos_higher[2] + 0.3
-    pos_higher.append(0) 
+    pos_higher[2] = pos_higher[2] + 1
+
+    dpos_yaw = (array(gates[0]['pos']) - array(pos))[:2]
+    yaw_desired = math.atan2(dpos_yaw[1], dpos_yaw[0])
+    pos_higher.append(yaw_desired)
+
+
     waypoint_array = [pos_higher]
     for g in gates:
         gate_pos = g['pos']
         gate_yaw = g['rot'][3]
-        # r = R.from_euler("ZYX", (gate_yaw, 0, 0))
 
         # # Padding before
         # gate_padding_wp = array(gate_pos) + array([0, 0.5, 0]) @ r.as_matrix()
@@ -661,7 +665,7 @@ def generate_trajectory_mavveric(pos,gates):
     y_path_tot = []
     z_path_tot = []
     for i in range(len(trajectory)):
-        t = linspace(waypoints[i].time, waypoints[i+1].time, int(waypoints[i+1].time-waypoints[i].time)*20)
+        t = linspace(waypoints[i].time, waypoints[i+1].time, int(waypoints[i+1].time-waypoints[i].time)*200)
         x_path = trajectory[i][0] * t ** 4 + trajectory[i][1] * t ** 3 + trajectory[i][2] * t ** 2 + trajectory[i][3] * t + trajectory[i][4]
         x_path_tot += x_path.tolist()
         

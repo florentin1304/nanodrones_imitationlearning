@@ -7,7 +7,7 @@ import cv2
 import json
 
 class Recorder():
-    def __init__(self, metadata: dict = {}):
+    def __init__(self, metadata: dict = {}, save_dir='data'):
         # Create run name
         unique_string = self.get_random_string(5)
         datetime_string = datetime.strftime(datetime.now(), "y%y-m%m-d%d_h%H-m%M")
@@ -24,7 +24,7 @@ class Recorder():
         # Working directories
         curr_dir = os.path.dirname( os.path.abspath(__file__) )
         path = Path(curr_dir).parent.parent.absolute()
-        self.working_directory = os.path.join(path, "data")
+        self.working_directory = os.path.join(path, save_dir)
         self.image_directory = os.path.join(self.working_directory, "images")
         self.metadata_directory = os.path.join(self.working_directory, "metadata")
 
