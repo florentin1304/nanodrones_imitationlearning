@@ -11,7 +11,7 @@ WorldInfo {
 }
 Viewpoint {
   orientation -0.30219173754236267 0.4509457437530654 0.839838133185272 1.3469596083248938
-  position -2.897900872070368 -8.365902544470101 7.634814090401527
+  position -3.204577544867042 -11.469615018654608 12.013833706865656
 }
 TexturedBackground {
   texture "stadium"
@@ -20,14 +20,14 @@ TexturedBackground {
 TexturedBackgroundLight {
 }
 RectangleArena {
-  floorSize 5 5
+  floorSize 20 20
   floorAppearance Parquetry {
     type "light strip"
   }
 }
 DEF imav2022-gate Solid {
-  translation 0 2 0
-  rotation 0 0 1 4.6928012867022945e-06
+  translation 2 0 0
+  rotation 0 0 1 -1.5707853267948968
   children [
     DEF gatebody Shape {
       appearance PBRAppearance {
@@ -49,7 +49,10 @@ DEF imav2022-gate Solid {
   boundingObject USE gatebody
 }
 DEF Crazyflie Crazyflie {
-  rotation 0.41938991053570934 -0.6856546784245406 0.5949703899316247 0.0001696241917545527
+  hidden linearVelocity_0 -0.05408951640544291 -0.0540895164054429 -0.18040403222112664
+  hidden angularVelocity_0 3.6059959319859884 -3.6059959319859884 -7.035275015597123e-17
+  translation -0.0017308645249741732 -0.0017308645249741728 0.009227070968923947
+  rotation 0.7071067811865476 -0.7071067811865474 -1.2387522507198442e-17 0.16282803634766085
   controller "gatefollowing"
   supervisor TRUE
 }

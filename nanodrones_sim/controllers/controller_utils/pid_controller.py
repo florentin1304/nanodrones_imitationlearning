@@ -36,9 +36,12 @@ class pid_velocity_fixed_height_controller():
     def pid(self, dt, desired_vx, desired_vy, desired_yaw_rate, desired_altitude, actual_roll, actual_pitch, actual_yaw_rate,
             actual_altitude, actual_vx, actual_vy):
         # Velocity PID control (converted from Crazyflie c code)
-        gains = {"kp_att_y": 1, "kd_att_y": 0.5, "kp_att_rp": 0.5, "kd_att_rp": 0.1,
+        # gains = {"kp_att_y": 1, "kd_att_y": 0.5, "kp_att_rp": 0.5, "kd_att_rp": 0.1,
+        #          "kp_vel_xy": 2, "kd_vel_xy": 0.5, "kp_z": 10, "ki_z": 5, "kd_z": 5}
+        
+        gains = {"kp_att_y": 1, "kd_att_y": 0.5, "kp_att_rp": 0.5, "kd_att_rp": 0.09,
                  "kp_vel_xy": 2, "kd_vel_xy": 0.5, "kp_z": 10, "ki_z": 5, "kd_z": 5}
-                #kp_vel_xy:2,
+                #"kd_vel_xy": 0.5, "kd_z": 5
         
 
         # Velocity PID control
@@ -77,22 +80,9 @@ class pid_velocity_fixed_height_controller():
         self.past_pitch_error = pitch_error
         self.past_roll_error = roll_error
 
-        self.command_hist.append([alt_command, roll_command, pitch_command, yaw_command])
+        self.command_hist.append([alt_command, roll_command, pitch_command, yaw_command]) # forze
 
-        # ### AVERAGE ???
-        # NUM_HIST = 3
-        # ALPHA = 0.5
-        # output_command = np.ma.average(
-        #     self.command_hist[-NUM_HIST:], 
-        #     axis=0,
-        #     weights=[ALPHA**i for i in range(min(NUM_HIST, len(self.command_hist[-NUM_HIST:])))][::-1]
-        #     )
-        # self.command_hist[-1] = output_command
-        # alt_command, roll_command, pitch_command, yaw_command = output_command
-        # ###
-
-        # Motor mixing
-        
+        # Motor mixing        
         m1 = alt_command - roll_command + pitch_command + yaw_command
         m2 = alt_command - roll_command - pitch_command - yaw_command
         m3 = alt_command + roll_command - pitch_command + yaw_command

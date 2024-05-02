@@ -5,6 +5,7 @@ from math import cos, sin, atan2
 from scipy.spatial.transform import Rotation as R
 from copy import deepcopy
 import sys
+import pandas as pd
 sys.path.append("..")
 sys.path.append("../../..") #home
 
@@ -23,7 +24,7 @@ class GateFollower(Supervisor):
         self.__record = record
         self.__display_path_flag = display_path
         self.__env_randomisation = randomisation
-        self.__gate_node = self.getFromDef('imav2022-gate')
+        # self.__gate_node = self.getFromDef('imav2022-gate')
 
         self.__pencil_filter = PencilFilter()
 
@@ -112,19 +113,31 @@ class GateFollower(Supervisor):
                                         "depth_img",
                                         "pencil_img"])
             
-        # Generate new track and trajectory
+        # Generate new track
         tg = TrackGenerator(num_gate_poses=num_gates)
-        self.__gate_poses = tg.generate()
-        # self.__gate_poses = tg.generate_easy()
-        self.__gate_square_poses = tg.to_gate_squares(self.__gate_poses)
+        
+        # self.__gate_poses = tg.generate()
+        self.__gate_poses = tg.generate_easy()
+        # self.__gate_poses = tg.generate_file()
+        self.__display_gates()
 
-        trajectory = generate_trajectory_mavveric(self.__sensors['gps'].getValues(), self.__gate_square_poses)
+
+        ### Generate trajectory
+        self.__gate_square_poses = tg.to_gate_squares(self.__gate_poses)
+        waypoints, trajectory = generate_trajectory_mavveric(self.__sensors['gps'].getValues(), self.__gate_square_poses)
+        
+        wpdf = pd.DataFrame(waypoints, columns=['x','y','z','yaw', 'time'])
+        wpdf.to_csv("wp.csv")
+
+        trdf = pd.DataFrame(trajectory, columns=['x','y','z','yaw', 'time'])
+        trdf.to_csv("traj.csv")
+
         self.__pathplanner = PathPlanner(trajectory=trajectory)
         if self.__display_path_flag and not self.__record: 
             self.__display_path(trajectory)
         
         self.__current_waypoint = 0
-        self.__update_gate_pose()
+        # self.__update_gate_pose()
 
         # Initialise state variables
         self.__past_motor_power = np.array([-1,1,-1,1])
@@ -132,6 +145,7 @@ class GateFollower(Supervisor):
         self.__past_time = 0
         self.__past_pos = self.__sensors['gps'].getValues()
         self.__num_steps = 0
+        self.__startRecording = False
 
 
     def step(self):
@@ -155,11 +169,12 @@ class GateFollower(Supervisor):
 
         # Get pathplanner update
         drone_state = np.hstack([pos, rpy])
-        gate_position = self.__gate_node.getPosition()
+        gate_position = self.__gate_square_poses[ self.__current_waypoint ]['pos']
         v_target, yaw_desired, des_height, fin = self.__pathplanner(drone_state, gate_position)
         if robot.getTime() < 5:
             v_target = [0,0]
             des_height = 1 
+            self.__pathplanner.resetHist()
 
         # PID velocity controller with fixed height
         roll, pitch, yaw = rpy
@@ -175,7 +190,7 @@ class GateFollower(Supervisor):
             self.__motors[i].setVelocity(motor_power[i] * ((-1) ** (i+1)) )
 
         # Record data
-        if self.__record and self.__past_time != 0:
+        if self.__record and self.__past_time != 0 and self.__startRecording:
             image_string = self.__sensors['camera'].getImage()
             image_data = np.frombuffer(image_string, dtype=np.uint8)
             image_data = image_data.reshape((self.__sensors['camera'].getHeight(), self.__sensors['camera'].getWidth(), 4))
@@ -196,7 +211,7 @@ class GateFollower(Supervisor):
             depth_array = depth_array.astype(np.uint8)
             depth_image_name = self.recorder.add_image(depth_array, 'depth')
 
-            gate_state = self.__get_current_gate_pos()
+            gate_state = self.__get_current_gate_state()
             current_pos_sp = self.__pathplanner.getCurrentSP()
 
             self.recorder.add_row([pos[0], pos[1], pos[2], rpy[0], rpy[1], rpy[2], 
@@ -216,8 +231,9 @@ class GateFollower(Supervisor):
 
         # Reset gate position
         if self.__is_passing_through_gate(pos):
+            self.__startRecording = True
             self.__current_waypoint += 1
-            if self.__current_waypoint == len(self.__gate_poses):
+            if self.__current_waypoint == len(self.__gate_square_poses):
                 print("Finished track... restarting simulation")
                 if self.__record:
                     self.recorder.save_data()
@@ -225,9 +241,10 @@ class GateFollower(Supervisor):
                 ### TODO: Add way to distinguish between reset ending or close-sim ending
                 self.reset()
             else:
-                self.__update_gate_pose()
+                pass
+                # self.__update_gate_pose()
 
-        if robot.getTime() > 5 and bool(self.__sensors['touch_sensor'].getValue()):
+        if robot.getTime() > 10 and bool(self.__sensors['touch_sensor'].getValue()):
             print("Drone touched... resetting simulation")
             self.reset()
 
@@ -245,21 +262,21 @@ class GateFollower(Supervisor):
 
         return return_value
 
-    def __update_gate_pose(self):
-        gate_state = self.__gate_poses[ self.__current_waypoint ]
-        random_pos, random_rot = gate_state['pos'], gate_state['rot']
-        self.__gate_node.getField('translation').setSFVec3f( random_pos.tolist() )
-        self.__gate_node.getField('rotation').setSFRotation( random_rot.tolist() ) 
+    # def __update_gate_pose(self):
+    #     gate_state = self.__gate_poses[ self.__current_waypoint ]
+    #     random_pos, random_rot = gate_state['pos'], gate_state['rot']
+    #     self.__gate_node.getField('translation').setSFVec3f( random_pos.tolist() )
+    #     self.__gate_node.getField('rotation').setSFRotation( random_rot.tolist() ) 
 
     def __is_passing_through_gate(self, pos):
-        gate_position = self.__gate_node.getPosition()
+        gate_position = self.__get_current_gate_state()['pos']
         d_pos = np.array(gate_position[:2]) - np.array(pos[:2])
 
-        if np.linalg.norm(d_pos) < 0.2 and abs(pos[2] - (gate_position[2] + 1)) < 0.1:
+        if np.linalg.norm(d_pos) < 0.2 and abs(pos[2] - (gate_position[2])) < 0.1:
             return True
         return False
 
-    def __get_current_gate_pos(self):
+    def __get_current_gate_state(self):
         return self.__gate_square_poses[ self.__current_waypoint ]
 
     def __display_path(self, path):
@@ -292,11 +309,27 @@ class GateFollower(Supervisor):
         children_field.importMFNodeFromString(-1 ,trail_str)
         print("done")
 
+    def __display_gates(self):
+        root_node = self.getRoot()
+        children_field = root_node.getField('children')
+        for i in range(len(self.__gate_poses)-1):
+            gate_node = self.getFromDef(f'imav2022-gate')
+            gate_node_str = gate_node.exportString()
+            gate_node_str_list = gate_node_str.split(" ")
+            gate_node_str_list[1] += str(i+1)
+            gate_node_str_new = ' '.join(gate_node_str_list)
+            children_field.importMFNodeFromString(-1, gate_node_str_new)
+
+        for i, gate_state in enumerate(self.__gate_poses):
+            gate_node = self.getFromDef(f'imav2022-gate{'' if i==0 else i}')
+            random_pos, random_rot = gate_state['pos'], gate_state['rot']
+            gate_node.getField('translation').setSFVec3f( random_pos.tolist() )
+            gate_node.getField('rotation').setSFRotation( random_rot.tolist() ) 
 
 
 if __name__ == "__main__":
     print("Starting simulation")
-    gf = GateFollower(record=False, display_path=True)
+    gf = GateFollower(record=True, display_path=False )
     
     gf.reset()
 
