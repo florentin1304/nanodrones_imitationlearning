@@ -269,6 +269,12 @@ class Waypoint:
         self.z = z
         self.yaw = yaw
 
+
+        r = R.from_euler('Z', yaw)
+        vel = (r.as_matrix() @ array([1.0, 0, 0]))
+        self.vel_x = vel[0]
+        self.vel_y = vel[1]
+
         self.time = time
 
 
@@ -302,8 +308,8 @@ def joint(waypoints):
         P_numpy[5 + i * 18, 5 + i * 18] = 1  # minimize snap for Y
         P_numpy[7 + i * 18, 7 + i * 18] = 100  # minimize acceleration for Y
         P_numpy[10 + i * 18, 10 + i * 18] = 1  # minimize snap for Z
-        # P_numpy[12 + i * 18, 12 + i * 18] = 100  # minimize acceleration for Z
-        P_numpy[15 + i * 18, 15 + i * 18] = 100  # minimize acceleration for Yaw
+        P_numpy[12 + i * 18, 12 + i * 18] = 100  # minimize acceleration for Z
+        # P_numpy[15 + i * 18, 15 + i * 18] = 100  # minimize acceleration for Yaw
     P = csc_matrix(P_numpy)  # convert to CSC for performance
 
     # =============================
@@ -403,6 +409,7 @@ def joint(waypoints):
         A[cc, 1 + i * 18] = 3 * waypoints[i].time ** 2
         A[cc, 2 + i * 18] = 2 * waypoints[i].time
         A[cc, 3 + i * 18] = 1
+        # b[cc, 0] = waypoints[i].vel_x #CONSTRAINT IN VELOCITA SU X
 
         A[cc, 0 + i * 18 - 18] = -1 * A[cc, 0 + i * 18]
         A[cc, 1 + i * 18 - 18] = -1 * A[cc, 1 + i * 18]
@@ -413,6 +420,8 @@ def joint(waypoints):
         A[cc, 6 + i * 18] = 3 * waypoints[i].time ** 2
         A[cc, 7 + i * 18] = 2 * waypoints[i].time
         A[cc, 8 + i * 18] = 1
+        # b[cc, 0] =  waypoints[i].vel_y #CONSTRAINT IN VELOCITA SU Y
+
 
         A[cc, 5 + i * 18 - 18] = -1 * A[cc, 5 + i * 18]
         A[cc, 6 + i * 18 - 18] = -1 * A[cc, 6 + i * 18]
@@ -609,7 +618,7 @@ def joint(waypoints):
 
     # setup solver and solve
     m = osqp.OSQP()
-    m.setup(P=P, q=q, A=A, l=l, u=u, verbose=True)  # extra solver variables can be set here
+    m.setup(P=P, q=q, A=A, l=l, u=u, verbose=False)  # extra solver variables can be set here
     res = m.solve()
 
     # save to trajectory variable
@@ -899,7 +908,7 @@ def generate_waypoints_yaw(pos,gates):
         gate_yaw = g['rot'][3]
 
         r = R.from_euler('Z', gate_yaw)
-        padding_point = (r.as_matrix() @ array([0, 0.35, 0]))
+        padding_point = (r.as_matrix() @ array([0, 0.2, 0]))
  
         # # Padding before
         gate_padding_wp = array(gate_pos) - padding_point
@@ -911,7 +920,8 @@ def generate_waypoints_yaw(pos,gates):
         # # Padding after
         gate_padding_wp = array(gate_pos) + padding_point
         waypoint_array.append(gate_padding_wp.tolist() + [gate_yaw])
-
+    
+    waypoint_array.append([0,0,1,0])
     return waypoint_array
 
 def generate_trajectory_mavveric(pos,gates):

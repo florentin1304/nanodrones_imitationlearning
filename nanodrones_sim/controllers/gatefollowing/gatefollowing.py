@@ -14,6 +14,7 @@ from controller_utils.pathplanner import PathPlanner
 from controller_utils.track_generator import TrackGenerator
 from controller_utils.recorder import Recorder
 from controller_utils.maveric_trajectory_planner import generate_trajectory_mavveric
+from controller_utils.trajectory_generator import TrajectoryGenerator
 
 from imitation_learning_simple.utils.pencil_filter import PencilFilter
 
@@ -114,23 +115,31 @@ class GateFollower(Supervisor):
                                         "pencil_img"])
             
         # Generate new track
-        tg = TrackGenerator(num_gate_poses=num_gates)
+        # tg = TrackGenerator(num_gate_poses=num_gates)
         
         # self.__gate_poses = tg.generate()
-        self.__gate_poses = tg.generate_easy()
-        # self.__gate_poses = tg.generate_file()
+        # self.__gate_poses = tg.generate_easy()
+        # self.__gate_poses = tg.generate_from_file()
+        tg = TrajectoryGenerator()
+        rx = np.random.uniform(1,5)
+        ry = np.random.uniform(1,5)
+        left = np.random.choice([False, True])
+        trajectory = tg.generate_ellipse(rx=rx, ry=ry, shift_left=left)
+        self.__gate_poses = tg.generate_gate_positions_recursive(trajectory=trajectory)
+        self.__gate_square_poses = tg.to_gate_squares(self.__gate_poses)
+
         self.__display_gates()
 
 
         ### Generate trajectory
-        self.__gate_square_poses = tg.to_gate_squares(self.__gate_poses)
-        waypoints, trajectory = generate_trajectory_mavveric(self.__sensors['gps'].getValues(), self.__gate_square_poses)
+        # self.__gate_square_poses = tg.to_gate_squares(self.__gate_poses)
+        # waypoints, trajectory = generate_trajectory_mavveric(self.__sensors['gps'].getValues(), self.__gate_square_poses)
         
-        wpdf = pd.DataFrame(waypoints, columns=['x','y','z','yaw', 'time'])
-        wpdf.to_csv("wp.csv")
+        # wpdf = pd.DataFrame(waypoints, columns=['x','y','z','yaw', 'time'])
+        # wpdf.to_csv("wp.csv")
 
-        trdf = pd.DataFrame(trajectory, columns=['x','y','z','yaw', 'time'])
-        trdf.to_csv("traj.csv")
+        # trdf = pd.DataFrame(trajectory, columns=['x','y','z','yaw', 'time'])
+        # trdf.to_csv("traj.csv")
 
         self.__pathplanner = PathPlanner(trajectory=trajectory)
         if self.__display_path_flag and not self.__record: 
@@ -170,7 +179,8 @@ class GateFollower(Supervisor):
         # Get pathplanner update
         drone_state = np.hstack([pos, rpy])
         gate_position = self.__gate_square_poses[ self.__current_waypoint ]['pos']
-        v_target, yaw_desired, des_height, fin = self.__pathplanner(drone_state, gate_position)
+        past_gate_position = self.__gate_square_poses[ self.__current_waypoint-1 ]['pos']
+        v_target, yaw_desired, des_height, fin = self.__pathplanner(drone_state, past_gate_position, gate_position)
         if robot.getTime() < 5:
             v_target = [0,0]
             des_height = 1 
@@ -329,7 +339,7 @@ class GateFollower(Supervisor):
 
 if __name__ == "__main__":
     print("Starting simulation")
-    gf = GateFollower(record=True, display_path=False )
+    gf = GateFollower(record=False, display_path=True)
     
     gf.reset()
 

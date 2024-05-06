@@ -5,6 +5,8 @@ from pathlib import Path
 import csv
 import cv2
 import json
+import tqdm
+
 
 class Recorder():
     def __init__(self, metadata: dict = {}, save_dir='data'):
@@ -16,6 +18,7 @@ class Recorder():
 
         # Data variables
         self.meta_data = {}
+        self.traj_report = None
         self.headers = None
         self.running_index = 0
         self.rows = [] # list of (lists of strings)
@@ -26,7 +29,7 @@ class Recorder():
         path = Path(curr_dir).parent.parent.absolute()
         self.working_directory = os.path.join(path, save_dir)
         self.image_directory = os.path.join(self.working_directory, "images")
-        self.metadata_directory = os.path.join(self.working_directory, "metadata")
+        self.metadata_directory = os.path.join(self.working_directory, "metadata", self.run_name)
 
         os.makedirs(self.working_directory, exist_ok=True)
         os.makedirs(self.image_directory, exist_ok=True)
@@ -50,11 +53,13 @@ class Recorder():
 
         return key
 
+    def add_trajectory_report(self, report):
+        self.traj_report = report
 
     def set_headers(self, header_fields: list[str]):
         self.headers = ['index', 'run_name'] + header_fields
         
-    def save_data(self, data=True, images=True, metadata=True):
+    def save_data(self, data=True, images=True, metadata=True, report=True):
         # Write the main csv data file
         if data:
             data_path = os.path.join(self.working_directory, self.run_name+".csv")
@@ -65,17 +70,20 @@ class Recorder():
 
         # Save images
         if images:
-            for key, image in self.images.items():
+            for key, image in tqdm.tqdm(self.images.items(), desc="Saving images: "):
                 img_path = os.path.join(self.image_directory, key+".png")
                 cv2.imwrite(img_path, image)
 
         # Save metadata
         if metadata:
             json_object = json.dumps(self.meta_data, indent=4)
-            meta_data_path = os.path.join(self.metadata_directory, self.run_name + ".metadata")
+            meta_data_path = os.path.join(self.metadata_directory, "info.json")
             with open(meta_data_path, "w") as outfile:
                 outfile.write(json_object)
 
+        # Create and save report
+        if report:
+            pass
 
     def get_random_string(self, n: int):
         random_string = ''

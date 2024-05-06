@@ -5,13 +5,13 @@ class PathPlanner():
     def __init__(self, trajectory):
 
         # trajectory: [x, y, z, yaw, t]
-        if trajectory.shape[-1] != 5:
+        if trajectory.shape[-1] != 3:
             trajectory = trajectory.T
         
         self.current_i = 0
-        self.trajectory = np.array(trajectory)[:, :-2]
-        self.yaw_traj = trajectory[:, -2]
-        self.time_traj = trajectory[:, -1]
+        self.trajectory = np.array(trajectory)
+        # self.yaw_traj = trajectory[:, -2]
+        # self.time_traj = trajectory[:, -1]
 
         self.len_trajectory = len(trajectory)
         self.resetHist()
@@ -30,7 +30,7 @@ class PathPlanner():
     def getCurrentSP(self):
         return self.current_target
 
-    def __call__(self, state, gate_pos):
+    def __call__(self, state, past_gate_pos, gate_pos):
         pos = np.array(state[:3])
         angles = state[3:]
         yaw = angles[-1]
@@ -42,7 +42,7 @@ class PathPlanner():
                 break
 
             proposed_target = self.trajectory[self.current_i + i]
-            proposed_target_dist = abs(np.linalg.norm(pos-proposed_target) - 0.2)
+            proposed_target_dist = abs(np.linalg.norm(pos-proposed_target) - 0.3)
 
             if proposed_target_dist < best_dist:
                 best_i = i
@@ -83,25 +83,30 @@ class PathPlanner():
         des_height = target_pos[2]
 
         # Clip for stability
-        MAX_VEL_NORM = 0.35
+        MAX_VEL_NORM = 1.5
+        MIN_VEL_NORM = 0.5
+        dist = np.linalg.norm(gate_pos-pos)
+        past_dist = np.linalg.norm(past_gate_pos-pos)
+        dist_factor = min(dist, past_dist) / 2
+
         vel_norm = np.linalg.norm(vel_desired)
         vel_desired = MAX_VEL_NORM * np.array(vel_desired) / np.linalg.norm(vel_desired) 
-        # vel_desired = vel_desired * (np.linalg.norm(gate_pos-pos)/3)
+        vel_desired = vel_desired * dist_factor
 
-        # vel_norm = np.linalg.norm(vel_desired)
-        # if vel_norm < 0.2:
-        #     vel_desired = 0.2 * vel_desired / np.linalg.norm(vel_desired) 
-        # elif vel_norm > MAX_VEL_NORM:
-        #     vel_desired = MAX_VEL_NORM * vel_desired / np.linalg.norm(vel_desired) 
-        # print("Dist",np.linalg.norm(gate_pos-pos)/3)
-        # print(np.linalg.norm(vel_desired))
+        vel_norm = np.linalg.norm(vel_desired)
+        if vel_norm < MIN_VEL_NORM:
+            vel_desired = MIN_VEL_NORM * vel_desired / np.linalg.norm(vel_desired) 
+        elif vel_norm > MAX_VEL_NORM:
+            vel_desired = MAX_VEL_NORM * vel_desired / np.linalg.norm(vel_desired) 
+        print("Dist", dist_factor)
+        print("Vel", np.linalg.norm(vel_desired))
 
         # Average for stability
         self.past_vel.append([vel_desired[0], vel_desired[1], yaw_desired, des_height])
         self.past_vel = self.past_vel[-200:]
 
         NUM_HIST = 100
-        ALPHA = 0.9
+        ALPHA = 0.95
         output = np.ma.average(
             self.past_vel[-NUM_HIST:], 
             axis=0,

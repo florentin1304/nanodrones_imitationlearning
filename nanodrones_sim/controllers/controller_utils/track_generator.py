@@ -42,40 +42,65 @@ class TrackGenerator():
             
         return gate_poses
     
-    def generate_easy(self):
+    def generate_from_file(self):
+        # gate_poses = []
+        # gate_poses.append({
+        #     'pos': np.array([0+ np.random.uniform(-1,1),0,0]),
+        #     'rot': np.array([0,0,1,1e-5])
+        # })
+        # gate_poses.append({
+        #     'pos': np.array([2,2 + np.random.uniform(-1,1),0]),
+        #     'rot': np.array([0,0,1,np.pi/2])
+        # })
+        # gate_poses.append({
+        #     'pos': np.array([0 + np.random.uniform(-1,1) ,4,0]),
+        #     'rot': np.array([0,0,1,-(np.pi+np.pi/2)])
+        # })
+        # gate_poses.append({
+        #     'pos': np.array([-2,2+ np.random.uniform(-1,1),0]),
+        #     'rot': np.array([0,0,1, 3*np.pi/2])
+        # })
+
+        curr_dir = os.path.dirname( os.path.abspath(__file__) )
+        df = pd.read_csv(
+            os.path.join(curr_dir, 'base_tracks', "ellipse.csv"), 
+            names=['x','y'])
+        # df.columns = 
         gate_poses = []
-        gate_poses.append({
-            'pos': np.array([0+ np.random.uniform(-1,1),0,0]),
-            'rot': np.array([0,0,1,1e-5])
-        })
-        gate_poses.append({
-            'pos': np.array([2,2 + np.random.uniform(-1,1),0]),
-            'rot': np.array([0,0,1,np.pi/2])
-        })
-        gate_poses.append({
-            'pos': np.array([0 + np.random.uniform(-1,1) ,4,0]),
-            'rot': np.array([0,0,1,-(np.pi+np.pi/2)])
-        })
-        gate_poses.append({
-            'pos': np.array([-2,2+ np.random.uniform(-1,1),0]),
-            'rot': np.array([0,0,1, 3*np.pi/2])
-        })
 
-        for i in range(len(gate_poses)-1):
-            dir_vec = gate_poses[i+1]['pos'] - gate_poses[i]['pos']
-            yaw_des = math.atan2(dir_vec[1], dir_vec[0])
-            gate_poses[i]['rot'][3] = yaw_des + np.random.uniform(-0.3, 0.3)
-
+        scale = np.random.uniform(1, 4)
+        for i in range(len(df)):
+            gate = df.iloc[i]
+            gate_poses.append({
+                'pos': np.array([
+                        (gate['x'] + np.random.uniform(-0.2, 0.2)) * scale,
+                        (gate['y'] + np.random.uniform(-0.2, 0.2)) * scale,
+                        0 + np.random.uniform(-0.2, 0.2)
+                    ]),
+                'rot': np.array([0,0,1,0], dtype=float)
+            })
+        # Rotate
+        rotate = np.array([
+            [0,1,0],
+            [1,0,0],
+            [0,0,1]
+        ])
         for g in gate_poses:
             g['pos'][0] += 2
-            g['rot'][3] += -np.pi/2 + 1e-6
-            g['rot'][3] = g['rot'][3] % (2*np.pi)
+            # g['pos'] = rotate @ g['pos'] 
+
+        for i in range(len(gate_poses)):
+            dir_vec = gate_poses[ (i+1) % len(gate_poses) ]['pos'] - gate_poses[i]['pos']
+            yaw_des = math.atan2(dir_vec[1], dir_vec[0])
+            gate_poses[i]['rot'][3] = yaw_des + np.random.uniform(-0.2, 0.2)
+            gate_poses[i]['rot'][3] += -np.pi/2 + 1e-6        
+
         return gate_poses
     
     def generate_file(self):
         curr_dir = os.path.dirname( os.path.abspath(__file__) )
         df = pd.read_csv(
-            os.path.join(curr_dir, 'base_tracks', "0.csv"), 
+            os.path.join(curr_dir, 'base_tracks', "ellipse.csv"), 
             names=['x','y'])
         # df.columns = 
         gate_poses = []
@@ -85,7 +110,8 @@ class TrackGenerator():
             gate_poses.append({
                 'pos': np.array([gate['x'] + np.random.uniform(-1, 1),
                                  gate['y'] + np.random.uniform(-1, 1),
-                                 0 + + np.random.uniform(-0.2, 0.2)])
+                                 0 + np.random.uniform(-0.2, 0.2)]),
+                'rot': np.array([0,0,1,0])
             })
         
         for i in range(len(gate_poses)-1):
