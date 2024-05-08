@@ -21,11 +21,11 @@ from imitation_learning_simple.utils.pencil_filter import PencilFilter
 class GateFollower(Supervisor):
     def __init__(self, record=False, display_path=True, randomisation=False):
         super().__init__()
-
         self.__record = record
         self.__display_path_flag = display_path
         self.__env_randomisation = randomisation
         # self.__gate_node = self.getFromDef('imav2022-gate')
+        self.__setup_time = 6.5
 
         self.__pencil_filter = PencilFilter()
 
@@ -121,9 +121,10 @@ class GateFollower(Supervisor):
         # self.__gate_poses = tg.generate_easy()
         # self.__gate_poses = tg.generate_from_file()
         tg = TrajectoryGenerator()
-        rx = np.random.uniform(1,5)
-        ry = np.random.uniform(1,5)
+        rx = np.random.uniform(1,7)
+        ry = np.random.uniform(1,7)
         left = np.random.choice([False, True])
+        # trajectory = tg.generate_line()
         trajectory = tg.generate_ellipse(rx=rx, ry=ry, shift_left=left)
         self.__gate_poses = tg.generate_gate_positions_recursive(trajectory=trajectory)
         self.__gate_square_poses = tg.to_gate_squares(self.__gate_poses)
@@ -176,12 +177,24 @@ class GateFollower(Supervisor):
         v_y = - dpos[0] * sin_yaw + dpos[1] * cos_yaw
         dpos_ego = np.array([v_x, v_y])
 
+        # Get target update
+        if self.__is_passing_through_gate(pos, rpy[2]):
+            print(f"Passing thorugh gate {self.__current_waypoint} !!!")
+            self.__startRecording = True
+            self.__current_waypoint += 1
+            if self.__current_waypoint == len(self.__gate_square_poses):
+                print("Finished track... restarting simulation")
+                if self.__record:
+                    self.recorder.save_data()
+
+                ### TODO: Add way to distinguish between reset ending or close-sim ending
+                self.reset()
+
         # Get pathplanner update
-        drone_state = np.hstack([pos, rpy])
-        gate_position = self.__gate_square_poses[ self.__current_waypoint ]['pos']
-        past_gate_position = self.__gate_square_poses[ self.__current_waypoint-1 ]['pos']
-        v_target, yaw_desired, des_height, fin = self.__pathplanner(drone_state, past_gate_position, gate_position)
-        if robot.getTime() < 5:
+        drone_pos = pos
+        drone_yaw = rpy[-1]
+        v_target, yaw_desired, des_height, fin = self.__pathplanner(drone_pos, drone_yaw, self.__gate_square_poses, self.__current_waypoint)
+        if robot.getTime() < self.__setup_time:
             v_target = [0,0]
             des_height = 1 
             self.__pathplanner.resetHist()
@@ -239,22 +252,8 @@ class GateFollower(Supervisor):
                                     pencil_name])
 
 
-        # Reset gate position
-        if self.__is_passing_through_gate(pos):
-            self.__startRecording = True
-            self.__current_waypoint += 1
-            if self.__current_waypoint == len(self.__gate_square_poses):
-                print("Finished track... restarting simulation")
-                if self.__record:
-                    self.recorder.save_data()
 
-                ### TODO: Add way to distinguish between reset ending or close-sim ending
-                self.reset()
-            else:
-                pass
-                # self.__update_gate_pose()
-
-        if robot.getTime() > 10 and bool(self.__sensors['touch_sensor'].getValue()):
+        if robot.getTime() > self.__setup_time and bool(self.__sensors['touch_sensor'].getValue()):
             print("Drone touched... resetting simulation")
             self.reset()
 
@@ -265,25 +264,29 @@ class GateFollower(Supervisor):
         # Update simulation and controller values
         self.__num_steps += 1
         self.__past_time = robot.getTime()
-        self.__past_pos = pos
+        self.__past_pos = deepcopy(pos)
         self.__past_motor_power = motor_power
         self.__past_commands = commands
         return_value = super().step(self.__timestep)
 
         return return_value
 
-    # def __update_gate_pose(self):
-    #     gate_state = self.__gate_poses[ self.__current_waypoint ]
-    #     random_pos, random_rot = gate_state['pos'], gate_state['rot']
-    #     self.__gate_node.getField('translation').setSFVec3f( random_pos.tolist() )
-    #     self.__gate_node.getField('rotation').setSFRotation( random_rot.tolist() ) 
-
-    def __is_passing_through_gate(self, pos):
+    def __is_passing_through_gate(self, pos, yaw):
         gate_position = self.__get_current_gate_state()['pos']
+        gate_yaw = self.__get_current_gate_state()['rot'][-1] # dont add 90 degrees cause gate x axis is 'lateral'
+        R_gate_yaw = np.array([
+            [cos(gate_yaw), -sin(gate_yaw)],
+            [sin(gate_yaw), cos(gate_yaw)]
+        ])
+
+        d_pos_past = np.array(gate_position[:2]) - np.array(self.__past_pos[:2]) 
         d_pos = np.array(gate_position[:2]) - np.array(pos[:2])
 
-        if np.linalg.norm(d_pos) < 0.2 and abs(pos[2] - (gate_position[2])) < 0.1:
-            return True
+        if np.linalg.norm(d_pos) < 0.5:
+            d_pos_gate_ref =  d_pos @ R_gate_yaw
+            d_pos_past_gate_ref =  d_pos_past @ R_gate_yaw
+            if d_pos_gate_ref[1]*d_pos_past_gate_ref[1] < 0:
+                return True
         return False
 
     def __get_current_gate_state(self):
