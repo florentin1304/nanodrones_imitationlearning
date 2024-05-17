@@ -1,354 +1,169 @@
-from controller import Robot, Supervisor
-from controller import TouchSensor
-import numpy as np
-from math import cos, sin, atan2
-from scipy.spatial.transform import Rotation as R
-from copy import deepcopy
 import sys
-import pandas as pd
 sys.path.append("..")
 sys.path.append("../../..") #home
+import numpy as np
+import pandas as pd
+import scipy
+from bayes_opt import BayesianOptimization as BO
+from bayes_opt import SequentialDomainReductionTransformer
+from controller_utils.gate_follower_supervisor import GateFollowerSupervisor
 
-from controller_utils.pid_controller import pid_velocity_fixed_height_controller
-from controller_utils.pathplanner import PathPlanner
-from controller_utils.track_generator import TrackGenerator
-from controller_utils.recorder import Recorder
-from controller_utils.maveric_trajectory_planner import generate_trajectory_mavveric
-from controller_utils.trajectory_generator import TrajectoryGenerator
+def parameter_analysis():
+    def min_func(gf, smoothing, ax_max, ax_min, ay_max):
+        x = (smoothing, ax_max, ax_min, ay_max)
+        print("Evaluating x: ", x)
+        config = {
+            'recorder':{
+                'mode': 'on',
+                'save_dir': 'data',
+                'save_img': bool(False)
+            },
 
-from imitation_learning_simple.utils.pencil_filter import PencilFilter
+            'pathplanner':{
+                'smoothing_factor': smoothing,
+                'velocity_profiler_config': {
+                    'ax_max': ax_max,
+                    'ax_min': ax_min,
+                    'ay_max': ay_max
+                }
+            }
+        }
 
-class GateFollower(Supervisor):
-    def __init__(self, record=False, display_path=True, randomisation=False):
-        super().__init__()
-        self.__record = record
-        self.__display_path_flag = display_path
-        self.__env_randomisation = randomisation
-        # self.__gate_node = self.getFromDef('imav2022-gate')
-        self.__setup_time = 6.5
+        statistics = {'time': [], 'completed':[] ,'ctrl_error':[], 'traj_error':[]}
+        for rad in [6]:
+            for frac in [1.0, 0.66, 0.33]:
+                traj_conf = {
+                    'trajectory_generator':{
+                        'traj_type': 'ellipse',
+                        'traj_conf': {
+                            'radius': rad, 
+                            'other_radius_frac': frac,
+                            'shift_left': False
+                        }
+                    }
+                }
+                config.update(traj_conf)
+                
+                # Simulate
+                gf.reset(config=config)
+                status = 'flying'
+                while status == 'flying':
+                    status = gf.step()
+                
+                # Get data
+                df = gf.recorder.get_data_df()
+                statistics['time'].append(df['sim_time'].iloc[-1] - df['sim_time'].iloc[0])
+                statistics['completed'].append(status == 'finished')
+                tot_err = 0
+                for i, var in enumerate(['roll_ctrl_error', 'pitch_ctrl_error', 'yaw_rate_ctrl_error']):
+                    tot_err += abs(df[var]).mean()
+                statistics['ctrl_error'] = tot_err
 
-        self.__pencil_filter = PencilFilter()
-
-        self.__motors = []
-        self.__sensors = {}
-        self.__current_waypoint = 0
-        self.__past_time = 0
-        self.__num_steps = 0
-
-        self.reset()
-
-    def reset(self):
-        self.simulationResetPhysics()
-        self.simulationReset()
-        self.__timestep = int(self.getBasicTimeStep())
-        super().step(self.__timestep)
-        robot = self
+                df['dist_from_proj'] = np.linalg.norm(
+                    df[['x','y','z']].to_numpy() - df[['x_proj','y_proj','z_proj']].to_numpy(),
+                    axis=1
+                )
+                statistics['traj_error'] = df['dist_from_proj'].mean()
         
-        # Initialize motors
-        self.__motors = []
-        for i in range(0,4):
-            motor = robot.getDevice(f"m{i+1}_motor")
-            motor.setPosition(float('inf'))
-            motor.setVelocity(((-1)**(i+1)) )
-            self.__motors.append(motor)
-
-        # Initialize Sensors
-        self.__sensors = {}
-        self.__sensors['imu'] = robot.getDevice("inertial_unit")
-        self.__sensors['imu'].enable(self.__timestep)
-        self.__sensors['gps']= robot.getDevice("gps")
-        self.__sensors['gps'].enable(self.__timestep)
-        self.__sensors['gyro'] = robot.getDevice("gyro")
-        self.__sensors['gyro'].enable(self.__timestep)
-        self.__sensors['camera'] = robot.getDevice("camera")
-        self.__sensors['camera'].enable(self.__timestep)
-        self.__sensors['rangefinder'] = robot.getDevice("range-finder")
-        self.__sensors['rangefinder'].enable(self.__timestep)
-        self.__sensors['touch_sensor'] = robot.getDevice("touchsensor")
-        self.__sensors['touch_sensor'].enable(self.__timestep)        
-        self.__sensors['accelerometer'] = robot.getDevice("accelerometer")
-        self.__sensors['accelerometer'].enable(self.__timestep)
-        # self.__sensors['dist_sensors'] = []
-        # for i in range(12):
-        #     range_sensor = robot.getDevice(f"range_m_{i}")
-        #     range_sensor.enable(timestep)
-        #     self.__sensors['dist_sensors'].append(range_sensor)
-
-        # Initialise controller
-        self.pid_controller = pid_velocity_fixed_height_controller()
-
-        # Randomise the environment
-        if self.__env_randomisation:
-            bg = np.random.choice(
-                [
-                "dawn_cloudy_empty", "dusk", "empty_office", "entrance_hall", "factory", "mars", "morning_cloudy_empty", 
-                "mountains", "music_hall", "noon_building_overcast", "noon_cloudy_countryside", "noon_cloudy_empty", 
-                "noon_cloudy_mountains", "noon_park_empty", "noon_stormy_empty", "noon_sunny_empty", "noon_sunny_garden", 
-                "stadium", "stadium_dry", "twilight_cloudy_empty"
-                ])
-            self.getFromDef("TexBG").getField('texture').setSFString(bg)
-            self.getFromDef("TexBG").getField('luminosity').setSFFloat(
-                np.random.uniform(0.1, 2)
-            )
-            self.getFromDef("TexBGlight").getField('texture').setSFString(bg)
-            self.getFromDef("TexBGlight").getField('luminosity').setSFFloat(
-                np.random.uniform(0.1, 2)
-            )
-
-        num_gates = 3
-
-        # Setup recorder
-        if self.__record:
-            self.recorder = Recorder({'randomisation': False})
-            self.recorder.set_headers(["x", "y", "z", "roll", "pitch", "yaw", 
-                                        "gate_x","gate_y", "gate_z", "gate_yaw", 
-                                        "vx_global", "vy_global", "vz_global",
-                                        "vx_local", "vy_local", 
-                                        "roll_rate","pitch_rate","yaw_rate",
-                                        "x_sp", "y_sp", "z_sp",
-                                        "vx_local_sp", "vy_local_sp", 
-                                        "alt_sp", 
-                                        "yaw_rate_sp",
-                                        "alt_command", "roll_command", "pitch_command", "yaw_command",
-                                        "camera_img",
-                                        "depth_img",
-                                        "pencil_img"])
-            
-        # Generate new track
-        # tg = TrackGenerator(num_gate_poses=num_gates)
+        score = np.mean(statistics['time']) + \
+                100*np.sum([1 if not(a) else 0 for a in statistics['completed']]) + \
+                20 * np.mean(statistics['ctrl_error']) + \
+                20 * np.mean(statistics['traj_error'])
+        print(f"FINAL RESULT ({x=}): ", score)
         
-        # self.__gate_poses = tg.generate()
-        # self.__gate_poses = tg.generate_easy()
-        # self.__gate_poses = tg.generate_from_file()
-        tg = TrajectoryGenerator()
-        rx = np.random.uniform(1,7)
-        ry = np.random.uniform(1,7)
-        left = np.random.choice([False, True])
-        # trajectory = tg.generate_line()
-        trajectory = tg.generate_ellipse(rx=rx, ry=ry, shift_left=left)
-        self.__gate_poses = tg.generate_gate_positions_recursive(trajectory=trajectory)
-        self.__gate_square_poses = tg.to_gate_squares(self.__gate_poses)
+        return score
+    
+    gf = GateFollowerSupervisor(display_path=True)
+    func_to_max = lambda smoothing, ax_max, ax_min, ay_max: -min_func(gf, smoothing, ax_max, ax_min, ay_max)
+    pbounds = {'smoothing': (0.85, 0.95),
+                'ax_max': (1, 5),
+               'ax_min': (1, 5),
+               'ay_max': (0.5, 5)}
+    
+    min_window = {'smoothing': 0.05,
+                'ax_max': 1,
+                'ax_min': 1,
+                'ay_max': 1}
+    min_window_list = [item[1] for item in sorted(min_window.items(), key=lambda x: x[0])]
+    bounds_transformer = SequentialDomainReductionTransformer(minimum_window=min_window_list)
 
-        self.__display_gates()
+    optimizer = BO(
+        f=func_to_max,
+        pbounds=pbounds,
+        random_state=0,
+        verbose=1,
+        allow_duplicate_points=True,
+        bounds_transformer=bounds_transformer
+    )
 
+    optimizer.probe(
+        params={'smoothing': 0.9,
+                'ax_max': 3.0,
+               'ax_min': 3.0,
+               'ay_max': 1.0},
+        lazy=True,
+    )
 
-        ### Generate trajectory
-        # self.__gate_square_poses = tg.to_gate_squares(self.__gate_poses)
-        # waypoints, trajectory = generate_trajectory_mavveric(self.__sensors['gps'].getValues(), self.__gate_square_poses)
-        
-        # wpdf = pd.DataFrame(waypoints, columns=['x','y','z','yaw', 'time'])
-        # wpdf.to_csv("wp.csv")
+    print('Start optimization...')
+    optimizer.maximize(
+        init_points=0,
+        n_iter=50,
+    )
 
-        # trdf = pd.DataFrame(trajectory, columns=['x','y','z','yaw', 'time'])
-        # trdf.to_csv("traj.csv")
+    res = optimizer.max
+    
+    # res = scipy.optimize.minimize(fun=lambda x: min_func(x, gf),
+    #                         x0=[3.0, 3.0, 1.0, 0.90],
+    #                         bounds=[(0.1, 10), (0.1, 10), (0.1, 10), (0.8, 0.99)],
+    #                         method='Nelder-Mead')
 
-        self.__pathplanner = PathPlanner(trajectory=trajectory)
-        if self.__display_path_flag and not self.__record: 
-            self.__display_path(trajectory)
-        
-        self.__current_waypoint = 0
-        # self.__update_gate_pose()
-
-        # Initialise state variables
-        self.__past_motor_power = np.array([-1,1,-1,1])
-        self.__past_commands = np.array([0, 0, 0, 0])
-        self.__past_time = 0
-        self.__past_pos = self.__sensors['gps'].getValues()
-        self.__num_steps = 0
-        self.__startRecording = False
-
-
-    def step(self):
-        robot = self
-        self.__dt = robot.getTime() - self.__past_time
-
-        # Get state information
-        pos = np.array(self.__sensors['gps'].getValues())
-        dpos = (pos - self.__past_pos) / self.__dt
-        acceleration = self.__sensors['accelerometer'].getValues()
-
-        rpy = self.__sensors['imu'].getRollPitchYaw()
-        drpy = self.__sensors['gyro'].getValues()
-
-        yaw = rpy[2]
-        cos_yaw = cos(yaw)
-        sin_yaw = sin(yaw)
-        v_x = dpos[0] * cos_yaw + dpos[1] * sin_yaw
-        v_y = - dpos[0] * sin_yaw + dpos[1] * cos_yaw
-        dpos_ego = np.array([v_x, v_y])
-
-        # Get target update
-        if self.__is_passing_through_gate(pos, rpy[2]):
-            print(f"Passing thorugh gate {self.__current_waypoint} !!!")
-            self.__startRecording = True
-            self.__current_waypoint += 1
-            if self.__current_waypoint == len(self.__gate_square_poses):
-                print("Finished track... restarting simulation")
-                if self.__record:
-                    self.recorder.save_data()
-
-                ### TODO: Add way to distinguish between reset ending or close-sim ending
-                self.reset()
-
-        # Get pathplanner update
-        drone_pos = pos
-        drone_yaw = rpy[-1]
-        v_target, yaw_desired, des_height, fin = self.__pathplanner(drone_pos, drone_yaw, self.__gate_square_poses, self.__current_waypoint)
-        if robot.getTime() < self.__setup_time:
-            v_target = [0,0]
-            des_height = 1 
-            self.__pathplanner.resetHist()
-
-        # PID velocity controller with fixed height
-        roll, pitch, yaw = rpy
-        roll_rate, pitch_rate, yaw_rate = drpy
-        x_global, y_global, z_global = pos
-        motor_power, commands = self.pid_controller.pid(self.__dt, v_target[0], v_target[1],
-                                        yaw_desired, des_height,
-                                        roll, pitch, yaw_rate,
-                                        z_global, v_x, v_y)
-        
-        # Apply motor powers found by PID
-        for i in range(4):
-            self.__motors[i].setVelocity(motor_power[i] * ((-1) ** (i+1)) )
-
-        # Record data
-        if self.__record and self.__past_time != 0 and self.__startRecording:
-            image_string = self.__sensors['camera'].getImage()
-            image_data = np.frombuffer(image_string, dtype=np.uint8)
-            image_data = image_data.reshape((self.__sensors['camera'].getHeight(), self.__sensors['camera'].getWidth(), 4))
-            rgb_matrix = image_data[:, :, :3]
-            image_name = self.recorder.add_image(rgb_matrix)
-
-            pencil_matrix = self.__pencil_filter.apply(rgb_matrix)
-            pencil_matrix = np.array(pencil_matrix).transpose(1,2,0) * 255
-            pencil_matrix = pencil_matrix.astype(np.uint8)
-            pencil_name = self.recorder.add_image(pencil_matrix, 'pencil')
-
-            depth_array = self.__sensors['rangefinder'].getRangeImage(data_type="buffer")
-            depth_array = np.ctypeslib.as_array(depth_array, 
-                                                (self.__sensors['rangefinder'].getWidth(), self.__sensors['rangefinder'].getHeight())
-                                                )
-            depth_array = 255 * (depth_array / self.__sensors['rangefinder'].getMaxRange())
-            depth_array[depth_array == float('inf')] = 255
-            depth_array = depth_array.astype(np.uint8)
-            depth_image_name = self.recorder.add_image(depth_array, 'depth')
-
-            gate_state = self.__get_current_gate_state()
-            current_pos_sp = self.__pathplanner.getCurrentSP()
-
-            self.recorder.add_row([pos[0], pos[1], pos[2], rpy[0], rpy[1], rpy[2], 
-                                    *gate_state['pos'], gate_state['rot'][3], 
-                                    dpos[0], dpos[1], dpos[2],
-                                    dpos_ego[0], dpos_ego[1],
-                                    drpy[0],drpy[1],drpy[2],
-                                    current_pos_sp[0], current_pos_sp[1], current_pos_sp[2],
-                                    v_target[0], v_target[1], 
-                                    des_height,
-                                    yaw_desired, 
-                                    *commands,
-                                    image_name,
-                                    depth_image_name,
-                                    pencil_name])
-
-
-
-        if robot.getTime() > self.__setup_time and bool(self.__sensors['touch_sensor'].getValue()):
-            print("Drone touched... resetting simulation")
-            self.reset()
-
-        if abs(rpy[0]) > np.pi/2 or abs(rpy[1]) > np.pi/2:
-            print("Drone ribaltated... resetting simulation")
-            self.reset()
-
-        # Update simulation and controller values
-        self.__num_steps += 1
-        self.__past_time = robot.getTime()
-        self.__past_pos = deepcopy(pos)
-        self.__past_motor_power = motor_power
-        self.__past_commands = commands
-        return_value = super().step(self.__timestep)
-
-        return return_value
-
-    def __is_passing_through_gate(self, pos, yaw):
-        gate_position = self.__get_current_gate_state()['pos']
-        gate_yaw = self.__get_current_gate_state()['rot'][-1] # dont add 90 degrees cause gate x axis is 'lateral'
-        R_gate_yaw = np.array([
-            [cos(gate_yaw), -sin(gate_yaw)],
-            [sin(gate_yaw), cos(gate_yaw)]
-        ])
-
-        d_pos_past = np.array(gate_position[:2]) - np.array(self.__past_pos[:2]) 
-        d_pos = np.array(gate_position[:2]) - np.array(pos[:2])
-
-        if np.linalg.norm(d_pos) < 0.5:
-            d_pos_gate_ref =  d_pos @ R_gate_yaw
-            d_pos_past_gate_ref =  d_pos_past @ R_gate_yaw
-            if d_pos_gate_ref[1]*d_pos_past_gate_ref[1] < 0:
-                return True
-        return False
-
-    def __get_current_gate_state(self):
-        return self.__gate_square_poses[ self.__current_waypoint ]
-
-    def __display_path(self, path):
-        root_node = self.getRoot()
-        children_field = root_node.getField('children')
-        
-        #====================================================
-        trail_str =  "DEF TRAIL Shape {\n" + \
-                    "  appearance Appearance {\n" + \
-                    "    material Material {\n" + \
-                    "      diffuseColor 1 0 0\n" + \
-                    "      emissiveColor 1 0 0\n" + \
-                    "    }\n" + \
-                    "  }\n" + \
-                    "  geometry DEF TRAIL_LINE_SET IndexedLineSet {\n" + \
-                    "    coord Coordinate {\n" + \
-                    "      point [\n"
-        for point in path:
-            trail_str += f"      {point[0]} {point[1]} {point[2]}\n"
-        trail_str += "      ]\n" +\
-                    "    }\n" +\
-                    "    coordIndex [\n"
-        for i in range(len(path)-1):
-            trail_str += f"      {i+1}\n"
-        trail_str +=  "    ]\n" +\
-                        "  }\n" +\
-                        "}\n"
-        #====================================================
-        print("Displaying path...", end='')
-        children_field.importMFNodeFromString(-1 ,trail_str)
-        print("done")
-
-    def __display_gates(self):
-        root_node = self.getRoot()
-        children_field = root_node.getField('children')
-        for i in range(len(self.__gate_poses)-1):
-            gate_node = self.getFromDef(f'imav2022-gate')
-            gate_node_str = gate_node.exportString()
-            gate_node_str_list = gate_node_str.split(" ")
-            gate_node_str_list[1] += str(i+1)
-            gate_node_str_new = ' '.join(gate_node_str_list)
-            children_field.importMFNodeFromString(-1, gate_node_str_new)
-
-        for i, gate_state in enumerate(self.__gate_poses):
-            gate_node = self.getFromDef(f'imav2022-gate{'' if i==0 else i}')
-            random_pos, random_rot = gate_state['pos'], gate_state['rot']
-            gate_node.getField('translation').setSFVec3f( random_pos.tolist() )
-            gate_node.getField('rotation').setSFRotation( random_rot.tolist() ) 
+    print(f"FINAL RESULT: ", res)
+    with open("xres.txt", 'w') as f:
+        f.write(str(res))
 
 
 if __name__ == "__main__":
     print("Starting simulation")
-    gf = GateFollower(record=False, display_path=True)
-    
-    gf.reset()
+    if False:
+        parameter_analysis()
+    else:
+        gf = GateFollowerSupervisor(display_path=True)
 
-    stop = False
-    while not stop:
-        sim_return = gf.step()
-        stop = sim_return == -1
+        while True:
+            config = {
+                'recorder':{
+                    'mode': 'on',
+                    'save_dir': 'data',
+                    'save_img': bool(False)
+                },
 
+                'trajectory_generator':{
+                    'traj_type': 'ellipse',
+                    'traj_conf': {
+                        'radius': 7,#np.random.uniform(3, 7), 
+                        'other_radius_frac': 0.4, #np.random.uniform(0.4, 1.6),
+                        'shift_left': False, #bool(np.random.choice([False, True]))
+                    }
+                },
+                # 'trajectory_generator':{
+                #     'traj_type': 'csv'
+                # },
 
+                'pathplanner':{
+                    'smoothing_factor': 0.91,
+                    'velocity_profiler_config': {
+                        'ax_max': 3,
+                        'ax_min': 3,
+                        'ay_max': 0.9
+                    }
+                }
+            }
+
+            gf.reset(config=config)
+            status = 'flying'
+            while status == 'flying':
+                status = gf.step()
+
+            if status == 'finished':
+                gf.recorder.save_data()
+            

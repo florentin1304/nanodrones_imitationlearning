@@ -1,7 +1,8 @@
-import numpy as np
 from datetime import datetime
-import os
 from pathlib import Path
+import pandas as pd
+import numpy as np
+import os
 import csv
 import cv2
 import json
@@ -9,7 +10,12 @@ import tqdm
 
 
 class Recorder():
-    def __init__(self, metadata: dict = {}, save_dir='data'):
+    def __init__(self, metadata: dict = {}, save_dir='data', mode: str='on', save_img=True):
+        # Functionality
+        self.mode = mode
+        assert self.mode == 'on' or self.mode == 'off', f'Unrecognized recorder mode {mode}'
+        self.save_img = save_img
+
         # Create run name
         unique_string = self.get_random_string(5)
         datetime_string = datetime.strftime(datetime.now(), "y%y-m%m-d%d_h%H-m%M")
@@ -17,8 +23,9 @@ class Recorder():
         print("Recording run:", self.run_name)
 
         # Data variables
-        self.meta_data = {}
-        self.traj_report = None
+        self.meta_data = metadata
+        self.traj = None
+        self.vel_profile = None
         self.headers = None
         self.running_index = 0
         self.rows = [] # list of (lists of strings)
@@ -35,6 +42,12 @@ class Recorder():
         os.makedirs(self.image_directory, exist_ok=True)
         os.makedirs(self.metadata_directory, exist_ok=True)
 
+    def is_on(self):
+        return self.mode == 'on'
+    
+    def is_recording_images(self):
+        return self.save_img
+    
     def add_row(self, content: list[str]):
         content = [self.running_index, self.run_name] + content
 
@@ -53,13 +66,17 @@ class Recorder():
 
         return key
 
-    def add_trajectory_report(self, report):
-        self.traj_report = report
+    def add_trajectory(self, report):
+        self.trajectory = report
 
     def set_headers(self, header_fields: list[str]):
         self.headers = ['index', 'run_name'] + header_fields
         
-    def save_data(self, data=True, images=True, metadata=True, report=True):
+    def get_data_df(self):
+        return pd.DataFrame(self.rows, columns=self.headers)
+
+
+    def save_data(self, data=True, images=True, metadata=True, trajectory=True):
         # Write the main csv data file
         if data:
             data_path = os.path.join(self.working_directory, self.run_name+".csv")
@@ -82,14 +99,16 @@ class Recorder():
                 outfile.write(json_object)
 
         # Create and save report
-        if report:
-            pass
+        if trajectory:
+            trajectory_path = os.path.join(self.metadata_directory, "trajectory.csv")
+            df = pd.DataFrame(self.trajectory, columns=['x','y','z','vel'])
+            df.to_csv(trajectory_path)
 
     def get_random_string(self, n: int):
         random_string = ''
         for _ in range(n):
             if np.random.uniform() < 0.5:
-                i = np.random.randint(65,91)
+                i = np.random.randint(65, 91)
             else:
                 i = np.random.randint(97, 123)
 

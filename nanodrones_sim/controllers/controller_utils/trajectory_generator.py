@@ -1,16 +1,35 @@
 import numpy as np
 import math
 from copy import deepcopy
+import pandas as pd
+import os
+from pathlib import Path
 
 class TrajectoryGenerator:
-    def __init__(self):
+    def __init__(self, traj_type='ellipse', traj_conf={}, discretization=1/1000, fov_reduction_factor=0.5):
 
-        self.__DISCRETIZATION = 1/1000 # milimeter
-        self.__FOV_REDUCTION_FACTOR = 0.7
+        self.__DISCRETIZATION = discretization # milimeter
+        self.__FOV_REDUCTION_FACTOR = fov_reduction_factor
         self.__FOV = 1.52
-        self.__type = 'ellipse'
+        self.__type = traj_type
+        self.__traj_conf = traj_conf
+        self.__generate_functions = {
+            'ellipse': self.__generate_ellipse,
+            'line': self.__generate_line,
+            'csv': self.__generate_from_csv
+        }
 
-    def generate_line(self, length=10):
+
+    def generate_trajectory(self):
+        gen_func = self.__generate_functions.get(self.__type)
+        
+        assert gen_func != None, f"Trajectory type {self.__type} unrecognized!"
+
+        traj = gen_func(**self.__traj_conf)
+        return traj
+        
+
+    def __generate_line(self, length=10):
         x = np.linspace(0,length,int(length*1000/2))
         y = np.zeros_like(x)
         z = np.ones_like(x)
@@ -18,14 +37,17 @@ class TrajectoryGenerator:
         traj = np.vstack([x,y,z]).T
         return traj
     
-    def generate_ellipse(self, rx:float=6.0, ry:float=9.0, shift_left=False):
+    def __generate_ellipse(self, radius:float=6.0, other_radius_frac:float=0.6, shift_left=False):
         # Calculate circumference to ensure 1 cm points
+        rx = radius
+        ry = radius * other_radius_frac
+
         h = np.power(rx-ry, 2) / np.power(rx+ry, 2)
         circumference = np.pi * (rx + ry) * (1 + (3 * (h / (10 + np.sqrt(4-3*h)) ) ))
 
         # Create t parameter and adjust:
         ### -3pi/2 if going to the right
-        t = np.linspace(0, 2*np.pi, int(circumference/self.__DISCRETIZATION)) - ((int(shift_left) + 1/2)*np.pi)
+        t = np.linspace(0, (1.99)*np.pi, int(circumference/self.__DISCRETIZATION)) - ((int(shift_left) + 1/2)*np.pi)
         if shift_left: t = t[::-1] # has to be reversed to start in front of the 
 
         x = rx*np.cos(t)
@@ -35,8 +57,16 @@ class TrajectoryGenerator:
 
         return traj
 
-    def generate_from_waypoints(self, waypoints:list):
-        pass    
+
+    def __generate_from_csv(self, csv_file='controllers/controller_utils/base_tracks/a.csv'):
+        curr_dir = os.path.dirname( os.path.abspath(__file__) )
+        path = Path(curr_dir).parent.parent.absolute()
+        file_path = os.path.join(path, csv_file)
+        
+        df = pd.read_csv(file_path)
+        df = df[['x','y','z']]
+        traj = df.to_numpy()
+        return traj
 
     
 
@@ -71,9 +101,8 @@ class TrajectoryGenerator:
 
 
     def generate_gate_positions_R(self, current, solution, index, trajectory, max_index):
-        if index > max_index-(3/self.__DISCRETIZATION):
+        if 1 < self.__DISCRETIZATION*(len(trajectory[0]) - current[-1]['index']) < 2 and len(current) > 3:
             # if self.check_correct_gate_placement(trajectory, current):
-            print([gate['index'] for gate in current])
             solution = deepcopy(current)
             return solution, True
             # return current, False
@@ -81,8 +110,8 @@ class TrajectoryGenerator:
         ### Find possible next gate position indexes
         x,y,z = trajectory
         admissible_delta_indexes = []
-        for delta_i in range(int(5//self.__DISCRETIZATION), 
-                             int(1//self.__DISCRETIZATION), 
+        for delta_i in range(int(3.5//self.__DISCRETIZATION), 
+                             int(0.5//self.__DISCRETIZATION), 
                              -int(max(1, 0.25//self.__DISCRETIZATION))): # Move 0.25 meters everytime
             if index+delta_i >= max_index:
                 continue

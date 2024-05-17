@@ -77,6 +77,7 @@ class pid_velocity_fixed_height_controller():
         roll_command = gains["kp_att_rp"] * np.clip(roll_error, -1, 1) + gains["kd_att_rp"] * roll_deriv
         pitch_command = -gains["kp_att_rp"] * np.clip(pitch_error, -1, 1) - gains["kd_att_rp"] * pitch_deriv
         yaw_command = gains["kp_att_y"] * np.clip(yaw_rate_error, -1, 1)
+        self.past_yaw_rate_error = yaw_rate_error
         self.past_pitch_error = pitch_error
         self.past_roll_error = roll_error
 
