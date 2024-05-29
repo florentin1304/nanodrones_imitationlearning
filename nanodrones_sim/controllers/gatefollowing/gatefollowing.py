@@ -112,10 +112,6 @@ def parameter_analysis():
 
     res = optimizer.max
     
-    # res = scipy.optimize.minimize(fun=lambda x: min_func(x, gf),
-    #                         x0=[3.0, 3.0, 1.0, 0.90],
-    #                         bounds=[(0.1, 10), (0.1, 10), (0.1, 10), (0.8, 0.99)],
-    #                         method='Nelder-Mead')
 
     print(f"FINAL RESULT: ", res)
     with open("xres.txt", 'w') as f:
@@ -129,7 +125,7 @@ if __name__ == "__main__":
     else:
         gf = GateFollowerSupervisor(display_path=True)
 
-        while True:
+        for _ in range(100):
             config = {
                 'recorder':{
                     'mode': 'on',
@@ -137,23 +133,24 @@ if __name__ == "__main__":
                     'save_img': bool(False)
                 },
 
-                'trajectory_generator':{
-                    'traj_type': 'ellipse',
-                    'traj_conf': {
-                        'radius': 7,#np.random.uniform(3, 7), 
-                        'other_radius_frac': 0.4, #np.random.uniform(0.4, 1.6),
-                        'shift_left': False, #bool(np.random.choice([False, True]))
-                    }
-                },
                 # 'trajectory_generator':{
-                #     'traj_type': 'csv'
+                #     'traj_type': 'ellipse',
+                #     'traj_conf': {
+                #         'radius': np.random.uniform(3, 7), 
+                #         'other_radius_frac': np.random.uniform(0.4, 1.6),
+                #         'shift_left': bool(np.random.choice([False, True]))
+                #     }
                 # },
+                'trajectory_generator':{
+                    'traj_type': 'csv'
+                },
 
                 'pathplanner':{
+                    'target_distance': 0.4,
                     'smoothing_factor': 0.91,
                     'velocity_profiler_config': {
                         'ax_max': 3,
-                        'ax_min': 3,
+                        'ax_min': 2,
                         'ay_max': 0.9
                     }
                 }

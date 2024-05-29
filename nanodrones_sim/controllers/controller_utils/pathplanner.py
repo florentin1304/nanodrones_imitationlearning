@@ -4,7 +4,7 @@ from sklearn.preprocessing import MinMaxScaler
 from controller_utils.velocity_profiler import VelocityProfiler
 
 class PathPlanner():
-    def __init__(self, trajectory, smoothing_factor=0.95, velocity_profiler_config={}):
+    def __init__(self, trajectory, smoothing_factor=0.95, target_distance=0.5, velocity_profiler_config={}):
 
         # trajectory: [x, y, z]
         if trajectory.shape[-1] != 3:
@@ -15,7 +15,7 @@ class PathPlanner():
         vp = VelocityProfiler(**velocity_profiler_config)
         self.curvature = vp.run(self.trajectory)
 
-        self.TARGET_DISTANCE = 0.5
+        self.TARGET_DISTANCE = target_distance
         self.closest_i = 0
         self.target_i = 0
 
@@ -27,6 +27,7 @@ class PathPlanner():
         self.ALPHA = smoothing_factor
         self.HIST_LEN = 100
 
+        self.past_target_distance = None
         self.len_trajectory = len(trajectory)
         self.resetHist()
         
@@ -68,11 +69,18 @@ class PathPlanner():
         self.closest_point = self.trajectory[ self.closest_i ]
 
         self.target_i = self.closest_i
-        while np.linalg.norm(self.closest_point - self.trajectory[ self.target_i ]) < self.TARGET_DISTANCE:
+
+        perc_vel_range = (np.linalg.norm(vel) - 1.0)/(3.0 - 1.0)
+        perc_vel_range = np.clip(perc_vel_range, 0, 1)
+        target_distance = 0.35 + perc_vel_range * (0.65 - 0.35)
+
+
+        while np.linalg.norm(self.closest_point - self.trajectory[ self.target_i ]) < target_distance:
             self.target_i += 1
             self.target_i = self.target_i % len(self.trajectory)
             
         self.target_point = self.trajectory[ self.target_i ]
+        self.past_target_distance = target_distance
             
 
         ######################################
@@ -155,6 +163,7 @@ class PathPlanner():
         # scale = np.clip(scale, self.MIN_VEL_NORM, self.MAX_VEL_NORM)
         # scale = 1.0
         # print("Scale factor: ", scale)
+
         scale = self.curvature[ self.closest_i ]
         vel_desired_fin = vel_desired_normalized * scale
 

@@ -47,7 +47,7 @@ class TrajectoryGenerator:
 
         # Create t parameter and adjust:
         ### -3pi/2 if going to the right
-        t = np.linspace(0, (1.99)*np.pi, int(circumference/self.__DISCRETIZATION)) - ((int(shift_left) + 1/2)*np.pi)
+        t = np.linspace(0, 2*np.pi, int(circumference/self.__DISCRETIZATION)) - ((int(shift_left) + 1/2)*np.pi)
         if shift_left: t = t[::-1] # has to be reversed to start in front of the 
 
         x = rx*np.cos(t)

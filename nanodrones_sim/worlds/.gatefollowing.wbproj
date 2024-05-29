@@ -7,5 +7,5 @@ centralWidgetVisible: 1
 orthographicViewHeight: 1
 textFiles: 0 "worlds/gatefollowing.wbt"
 consoles: Console:All:All
-renderingDevicePerspectives: Crazyflie:camera;1;0.969136;0;0
+renderingDevicePerspectives: Crazyflie:camera;1;0.904321;0;0
 renderingDevicePerspectives: Crazyflie:range-finder;1;0.190476;0;0
