@@ -17,7 +17,7 @@ from controller_utils.recorder import Recorder
 from controller_utils.maveric_trajectory_planner import generate_trajectory_mavveric
 from controller_utils.trajectory_generator import TrajectoryGenerator
 
-from imitation_learning_simple.utils.pencil_filter import PencilFilter
+from controller_utils.pencil_filter import PencilFilter
 
 class GateFollowerSupervisor(Supervisor):
     def __init__(self, display_path=True):
@@ -342,7 +342,7 @@ class GateFollowerSupervisor(Supervisor):
             children_field.importMFNodeFromString(-1, gate_node_str_new)
 
         for i, gate_state in enumerate(self.__gate_poses):
-            gate_node = self.getFromDef(f'imav2022-gate{'' if i==0 else i}')
+            gate_node = self.getFromDef(f"imav2022-gate{'' if i==0 else i}")
             random_pos, random_rot = gate_state['pos'], gate_state['rot']
             gate_node.getField('translation').setSFVec3f( random_pos.tolist() )
             gate_node.getField('rotation').setSFRotation( random_rot.tolist() ) 
