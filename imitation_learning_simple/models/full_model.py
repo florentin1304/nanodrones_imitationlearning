@@ -11,13 +11,15 @@ visual_fe_dict = {"frontnet": Frontnet,
                   "mobilenet": MobileNetv2}
 
 class FullModel(nn.Module):
-    def __init__(self, visual_fe, input_type, history_len, output_size=4):
+    def __init__(self, visual_fe, input_type, h, w, history_len, output_size=4):
         super(FullModel, self).__init__()
         self.output_size = output_size
         self.history_len = history_len
 
         assert visual_fe_dict.get(visual_fe) is not None, f"Visual feature extractor '{visual_fe}' unrecognized"
-        self.vfe = visual_fe_dict[visual_fe](c=3 if input_type=="RGB" else 2)
+        self.vfe = visual_fe_dict[visual_fe](c=3 if input_type=="RGB" else 2, 
+                                             h=h,
+                                             w=w)
         self.vfe_output_shape = self.vfe.output_shape[0]
 
         self.input_to_classifier = self.vfe_output_shape
@@ -52,7 +54,7 @@ class FullModel(nn.Module):
 
         ### features_output_tensor = (BATCH, TIME_STEP, FEATURES)
         if self.history_len > 0:
-            features_output_tensor = self.tcn()
+            features_output_tensor = self.tcn(features_output_tensor)
 
         ### features_output_tensor = (BATCH, TIME_STEP, FEATURES)
         old_x_shape = features_output_tensor.shape

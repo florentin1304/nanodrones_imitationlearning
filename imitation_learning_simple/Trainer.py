@@ -17,6 +17,7 @@ import json
 from models.full_model import FullModel
 from utils.StackingImageDataset import StackingImageDataset
 from utils.MaskedMSELoss import MaskedMSELoss
+from utils.PerformanceCalculator import PerformanceCalculator
 
 
 class Trainer:
@@ -26,7 +27,7 @@ class Trainer:
         ### Get important paths
         self.curr_dir = os.path.dirname( os.path.abspath(__file__) )
         self.home_path = Path(self.curr_dir).parent.absolute()
-        self.dataset_path = os.path.join(self.home_path, "nanodrones_sim", "data")
+        self.dataset_path = os.path.join(self.home_path, "data")
         self.weights_path = os.path.join(self.home_path, "imitation_learning_simple", "weights")
         self.output_path = os.path.join(self.home_path, "imitation_learning_simple", "output")
 
@@ -50,6 +51,8 @@ class Trainer:
         self.model = FullModel(visual_fe=self.args.visual_extractor, 
                                input_type=self.args.input_type,
                                history_len=self.args.hist_size, 
+                               h=320,
+                               w=320,
                                output_size=4)
         
         # Load weights if necessary
@@ -81,10 +84,12 @@ class Trainer:
         # Create DataLoader instances for train, validation, and test sets
         self.train_loader = DataLoader(self.train_dataset, 
                                        collate_fn=StackingImageDataset.padding_collate_fn, 
-                                       batch_size=self.args.batch_size, shuffle=True)
+                                       batch_size=self.args.batch_size, shuffle=True,
+                                       num_workers=8)
         self.val_loader = DataLoader(self.val_dataset, 
                                      collate_fn=StackingImageDataset.padding_collate_fn, 
-                                     batch_size=self.args.batch_size)
+                                     batch_size=self.args.batch_size,
+                                     num_workers=8)
         self.test_loader = DataLoader(self.test_dataset, 
                                       collate_fn=StackingImageDataset.padding_collate_fn, 
                                       batch_size=self.args.batch_size)
@@ -167,6 +172,7 @@ class Trainer:
         return running_loss / (num_samples+1e-5)
 
     def run_validation(self):
+        performance = PerformanceCalculator()
         with torch.no_grad():
             pbar = tqdm.tqdm(self.val_loader)
             running_loss = 0
@@ -183,6 +189,13 @@ class Trainer:
                 running_loss += loss.item() * images.size(0)
                 num_samples += self.args.batch_size
 
+                ###
+                for i in range(len(outputs)):
+                    performance.extend(outputs[i], labels[i]) 
+                ###
+
+        print(performance)
+        performance.plot("./")
         wandb.log({"val_loss": running_loss / (num_samples+1e-5)})
         return running_loss / (num_samples+1e-5)
     
