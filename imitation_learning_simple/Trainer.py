@@ -4,6 +4,9 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from torchvision.transforms import ToTensor, Normalize, Compose
 
+import numpy as np
+import random
+
 from pathlib import *
 import os
 import tqdm
@@ -11,9 +14,9 @@ import wandb
 import argparse
 import json
 
-from utils.StackingDataset import StackingDataset
-from models.resnet import ResNet18
-from models.tcn import TCN
+from models.full_model import FullModel
+from utils.StackingImageDataset import StackingImageDataset
+from utils.MaskedMSELoss import MaskedMSELoss
 
 
 class Trainer:
@@ -25,37 +28,35 @@ class Trainer:
         self.home_path = Path(self.curr_dir).parent.absolute()
         self.dataset_path = os.path.join(self.home_path, "nanodrones_sim", "data")
         self.weights_path = os.path.join(self.home_path, "imitation_learning_simple", "weights")
-        self.datastats_path = os.path.join(self.home_path, "imitation_learning_simple", "dataset_stats")
         self.output_path = os.path.join(self.home_path, "imitation_learning_simple", "output")
 
-        ### TODO: Set seed
-
-        ### Load stats
-        if not (self.args.avoid_input_normalization and self.args.avoid_output_normalization):
-            stats_file_path = os.path.join(self.datastats_path, self.args.stats_file_name)
-            if self.args.force_data_stats or not os.path.isfile(stats_file_path):
-                self.compute_dataset_stats()
-            
-            stats_file = open(stats_file_path, "r") 
-            stats = json.load(stats_file)
-
+        ### Set seed
+        self.set_seed(self.args.seed)
 
         ### Get dataset and model type
         transform = None
+        self.dataset = StackingImageDataset(
+                    max_hist=self.args.hist_size,
+                    csv_dir=self.dataset_path, 
+                    force_stats=self.args.force_data_stats,
+                    transform=transform,
+                    input_type=self.args.input_type,
+                    label_type=self.args.label_type,
+                    image_shape=(320, 320),
+                    norm_input=not(self.args.avoid_input_normalization),
+                    norm_label=not(self.args.avoid_label_normalization)
+                )
 
-        if self.args.model == "tcn":
-            self.dataset = StackingDataset(csv_dir=self.dataset_path, stats_dict=stats, transform=transform, max_hist=self.args.hist_size)
-            self.model = TCN()
-        elif self.args.model == "resnet":
-            self.dataset = StackingDataset(csv_dir=self.dataset_path, stats_dict=stats, transform=transform, max_hist=-1)
-            self.model = ResNet18()
-        else:
-            raise Exception(f"Model argument {self.args.model} not recognised")
+        self.model = FullModel(visual_fe=self.args.visual_extractor, 
+                               input_type=self.args.input_type,
+                               history_len=self.args.hist_size, 
+                               output_size=4)
         
         # Load weights if necessary
         if self.args.load_model != "":
             if not(self.args.load_model.endswith(".pth") or self.args.load_model.endswith(".pt")):
                 raise Exception("Weights file should end with .pt or .pth")
+                
             self.model.load_state_dict(
                 torch.load( os.join.path(self.weights_path, self.args.load_model) )
             )
@@ -78,20 +79,25 @@ class Trainer:
         self.train_dataset, self.val_dataset, self.test_dataset = random_split(self.dataset, [train_size, val_size, test_size])
 
         # Create DataLoader instances for train, validation, and test sets
-        self.train_loader = DataLoader(self.train_dataset, batch_size=self.args.batch_size, shuffle=True)
-        self.val_loader = DataLoader(self.val_dataset, batch_size=self.args.batch_size)
-        self.test_loader = DataLoader(self.test_dataset, batch_size=self.args.batch_size)
+        self.train_loader = DataLoader(self.train_dataset, 
+                                       collate_fn=StackingImageDataset.padding_collate_fn, 
+                                       batch_size=self.args.batch_size, shuffle=True)
+        self.val_loader = DataLoader(self.val_dataset, 
+                                     collate_fn=StackingImageDataset.padding_collate_fn, 
+                                     batch_size=self.args.batch_size)
+        self.test_loader = DataLoader(self.test_dataset, 
+                                      collate_fn=StackingImageDataset.padding_collate_fn, 
+                                      batch_size=self.args.batch_size)
 
         # Define criterion
-        self.criterion = nn.MSELoss()  # Mean Squared Error loss for regression
+        self.criterion = MaskedMSELoss()  # Mean Squared Error loss for regression
 
         ### Init Wandb
-
         wandb.init(
             mode=self.args.wandb_mode,
-            project="imitation_learning",
+            project="nanodrones_imitation_learning",
             entity="udrea-florentin00",
-            name=self.args.model,
+            name="megatest",
             config= vars(self.args)
         )
 
@@ -141,40 +147,45 @@ class Trainer:
         
         pbar = tqdm.tqdm(self.train_loader)
         running_loss = 0
-        i = 0
+        num_samples = 0
 
-        for images, labels in pbar:
-            pbar.set_description(f"Running loss: {running_loss/(i+1e-5) :.4}")
+        for images, labels, mask in pbar:
+            pbar.set_description(f"Running loss: {running_loss/(num_samples+1e-5) :.4}")
 
-            images, labels = images.to(self.device), labels.to(self.device)
+            images, labels, mask = images.to(self.device), labels.to(self.device), mask.to(self.device)
             outputs = self.model(images)
 
             self.optimizer.zero_grad()
-            loss = self.criterion(outputs, labels)
+            loss = self.criterion(outputs, labels, mask)
             loss.backward()
             self.optimizer.step()
 
             running_loss += loss.item() * images.size(0)
-            i += self.args.batch_size
-            wandb.log({"train_loss_running": loss.item()})
-        return running_loss / (i+1e-5)
+            num_samples += self.args.batch_size
+
+        wandb.log({"train_loss_running": running_loss / (num_samples+1e-5)})
+        return running_loss / (num_samples+1e-5)
 
     def run_validation(self):
-        total_loss = 0.0
-        num_samples = 0
         with torch.no_grad():
-            for images, labels in self.val_loader:
-                images, labels = images.to(self.device), labels.to(self.device)
-                
+            pbar = tqdm.tqdm(self.val_loader)
+            running_loss = 0
+            num_samples = 0
+            for images, labels, mask in pbar:
+                pbar.set_description(f"Validation loss: {running_loss/(num_samples+1e-5) :.4}")
+
+                images, labels, mask = images.to(self.device), labels.to(self.device), mask.to(self.device)
+
                 outputs = self.model(images)
-                loss = self.criterion(outputs, labels)
-                
-                total_loss += loss.item() * images.size(0)
-                num_samples += len(images)
 
-        validation_loss = total_loss / num_samples
-        return validation_loss
+                self.optimizer.zero_grad()
+                loss = self.criterion(outputs, labels, mask)
+                running_loss += loss.item() * images.size(0)
+                num_samples += self.args.batch_size
 
+        wandb.log({"val_loss": running_loss / (num_samples+1e-5)})
+        return running_loss / (num_samples+1e-5)
+    
     def run_test(self, save=True, plot_graphs=True):
         # Test the model
         self.model.eval()
@@ -192,11 +203,22 @@ class Trainer:
         wandb.log({"test_loss": test_loss})
         print(f"Test Loss: {test_loss:.4f}") 
 
+    def set_seed(self, random_seed):
+        random.seed(random_seed)
+        np.random.seed(random_seed)
+        torch.manual_seed(random_seed)
+        torch.cuda.manual_seed(random_seed)
+        torch.cuda.manual_seed_all(random_seed)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+
+        return torch.Generator().manual_seed(random_seed)
+
     def compute_dataset_stats(self):
         # TODO: HARDCODED!!! -> Rifare in modo che lo faccia per tutte le colonne, in modo generale
         # fa popo cacare cosi oh
         print("Computing dataset statistics...")
-        dataset = StackingDataset(csv_dir=self.dataset_path, norm_input=False, norm_output=False, transform=None, max_hist=-1)
+        dataset = StackingImageDataset(csv_dir=self.dataset_path, norm_input=False, norm_output=False, transform=None, max_hist=-1)
 
 
         depth_channel_sum = torch.zeros(1)

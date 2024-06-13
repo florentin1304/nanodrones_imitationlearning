@@ -4,9 +4,10 @@ import torch.nn as nn
 import torchvision
 
 class MobileNetv2(nn.Module):
-    def __init__(self):
+    def __init__(self, c=3):
         super(MobileNetv2, self).__init__()
-        self.input_channels = 3
+        assert c==3, "Mobilenet c!=3 not implemented yet"
+        self.input_channels = c
         self.width = 224
         self.height = 224
 

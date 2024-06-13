@@ -130,20 +130,20 @@ if __name__ == "__main__":
                 'recorder':{
                     'mode': 'on',
                     'save_dir': 'data',
-                    'save_img': bool(False)
+                    'save_img': bool(True)
                 },
 
-                # 'trajectory_generator':{
-                #     'traj_type': 'ellipse',
-                #     'traj_conf': {
-                #         'radius': np.random.uniform(3, 7), 
-                #         'other_radius_frac': np.random.uniform(0.4, 1.6),
-                #         'shift_left': bool(np.random.choice([False, True]))
-                #     }
-                # },
                 'trajectory_generator':{
-                    'traj_type': 'csv'
+                    'traj_type': 'ellipse',
+                    'traj_conf': {
+                        'radius': np.random.uniform(3, 7), 
+                        'other_radius_frac': np.random.uniform(0.4, 1.6),
+                        'shift_left': bool(np.random.choice([False, True]))
+                    }
                 },
+                # 'trajectory_generator':{
+                #     'traj_type': 'csv'
+                # },
 
                 'pathplanner':{
                     'target_distance': 0.4,

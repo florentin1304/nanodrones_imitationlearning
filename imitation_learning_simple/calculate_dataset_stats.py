@@ -8,7 +8,7 @@ import tqdm
 import matplotlib.pyplot as plt
 import cv2
 
-from utils.StackingDataset import StackingDataset
+from imitation_learning_simple.utils.StackingImageDataset import StackingImageDataset
 
 
 def calculate_mean_std(): 
@@ -19,7 +19,7 @@ def calculate_mean_std():
     path = Path(curr_dir).parent.absolute()
     dataset_path = os.path.join(path, "nanodrones_sim")
     dataset_path = os.path.join(dataset_path, "data")
-    dataset = StackingDataset(csv_dir=dataset_path, transform=transform)
+    dataset = StackingImageDataset(csv_dir=dataset_path, transform=transform)
 
     depth_channel_sum = torch.zeros(1)
     depth_channel_sum_sq = torch.zeros(1)
