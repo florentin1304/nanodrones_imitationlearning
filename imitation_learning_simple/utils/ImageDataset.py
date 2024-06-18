@@ -6,7 +6,7 @@ import json
 import warnings
 from PIL import Image
 from torch.utils.data import Dataset
-from torchvision.transforms import Compose, Normalize, Resize, ToTensor
+from torchvision.transforms import Compose, Normalize, Resize, ToTensor, Grayscale
 from utils.StatsCalculator import StatsCalculator
 
 class ImageDataset(Dataset):
@@ -14,9 +14,9 @@ class ImageDataset(Dataset):
                  csv_dir: str, 
                  force_stats=False,
                  transform=None,
-                 input_type="RGB",
+                 input_type="GRY",
                  label_type="commands",
-                 image_shape=(320, 320),
+                 input_shape=(1, 320, 320),
                  norm_input=True,
                  norm_label=True):
         """Image dataset
@@ -24,9 +24,9 @@ class ImageDataset(Dataset):
         Args:
             csv_dir (str): _description_
             transform (_type_, optional): _description_. Defaults to None.
-            input_type (str, optional): _description_. Defaults to "RGB".
+            input_type (str, optional): _description_. Defaults to "GRY".
             label_type (str, optional): _description_. Defaults to "commands".
-            image_shape (tuple, optional): _description_. Defaults to (320, 320).
+            input_shape (tuple, optional): _description_. Defaults to (1, 320, 320).
             force_stats (bool, optional): _description_. Defaults to False.
             norm_input (bool, optional): _description_. Defaults to True.
             norm_label (bool, optional): _description_. Defaults to True.
@@ -67,7 +67,7 @@ class ImageDataset(Dataset):
         self.label_type = label_type
         self.norm_input = norm_input
         self.norm_label = norm_label
-        self.image_shape = image_shape
+        self.input_shape = input_shape
         self.transform = transform
         self.__configure()
 
@@ -77,7 +77,7 @@ class ImageDataset(Dataset):
         if self.transform is not None:
             transformation_list.append(self.transform)
         transformation_list.append(ToTensor())
-        transformation_list.append(Resize(self.image_shape))
+        transformation_list.append(Resize(self.input_shape[1:]))
 
         if self.input_type == "RGB":
             self.get_image = lambda idx: self.__getRGBImage(idx)
@@ -85,18 +85,27 @@ class ImageDataset(Dataset):
                 means = self.stats_dict["camera_img"]['mean']
                 std = self.stats_dict["camera_img"]['std']
             
-            
                 transformation_list.append(Normalize(means, std))
             self.transform_image = Compose(transforms=transformation_list)
-        
-        elif self.input_type == "2CH":
-            self.get_image = lambda idx: self.__get2CHImage(idx)
+
+        elif self.input_type == "GRY":
+            self.get_image = lambda idx: self.__getRGBImage(idx)
             if self.norm_input:
-                means = [self.stats_dict["pencil_img"]['mean']/255, 0]
-                std = [self.stats_dict["pencil_img"]['std']/255, 1]
+                means = self.stats_dict["grayscale_img"]['mean'] / 255
+                std = self.stats_dict["grayscale_img"]['std'] / 255
+                transformation_list.append(Grayscale(num_output_channels=self.input_shape[0]))
+                transformation_list.append(Normalize(means, std))
+            self.transform_image = Compose(transforms=transformation_list)
+
+        elif self.input_type == "PEN":
+            self.get_image = lambda idx: self.__getPENImage(idx)
+            if self.norm_input:
+                means = [self.stats_dict["pencil_img"]['mean']/255]
+                std = [self.stats_dict["pencil_img"]['std']/255]
                 transformation_list.append(Normalize(means, std))
                 
             self.transform_image = Compose(transforms=transformation_list)
+
         else:
             raise Exception(f"Unknown {self.input_type=}")
         
@@ -146,25 +155,31 @@ class ImageDataset(Dataset):
 
         return rgb_image
         
+    def __getPENImage(self, idx):
+        # Get pencil
+        pencil_name = self.data_frame.loc[idx, 'pencil_img']
+        pencil_path = os.path.join(self.csv_dir, "images", pencil_name+".png") 
+        pencil_image = Image.open(pencil_path)
+        pencil_image = np.array(pencil_image)
+        return pencil_image
 
-    def __get2CHImage(self, idx):
-            # Get pencil
-            pencil_name = self.data_frame.loc[idx, 'pencil_img']
-            pencil_path = os.path.join(self.csv_dir, "images", pencil_name+".png") 
-            pencil_image = Image.open(pencil_path)
-            pencil_image = np.array(pencil_image)
+    def __getDEPTHImage(self, idx):
+        # Get depth
+        depth_name = self.data_frame.loc[idx, 'depth_img']
+        depth_path = os.path.join(self.csv_dir, "images", depth_name+".png") 
+        depth_image = Image.open(depth_path)
+        depth_array = np.array(depth_image)
+        return depth_array
     
-            # Get depth
-            depth_name = self.data_frame.loc[idx, 'depth_img']
-            depth_path = os.path.join(self.csv_dir, "images", depth_name+".png") 
-            depth_image = Image.open(depth_path)
-            depth_array = np.array(depth_image)
-            
-            # Stack depth image as a new channel 
-            # shape = (2, H, W)
-            final_array = np.stack([pencil_image, depth_array], axis=-1)
+    def __get2CHImage(self, idx):
+        pencil_image = self.__getPENImage(idx)
+        depth_array = self.__getDEPTHImage(idx)
 
-            return final_array
+        # Stack depth image as a new channel 
+        # shape = (2, H, W)
+        final_array = np.stack([pencil_image, depth_array], axis=-1)
+
+        return final_array
     
     def get_row(self, idx):
         return self.data_frame.iloc[idx]

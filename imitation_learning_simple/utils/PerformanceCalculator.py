@@ -38,21 +38,23 @@ class PerformanceCalculator:
 
         return calc_r2
     
-    def plot(self, path):
+    def plot(self, path, name="outputs"):
+        plt.rcParams['figure.figsize'] = (15,15)
         fig, axs = plt.subplots(2, 2)
         np_outputs = np.array(self.complete_outputs)
         np_labels = np.array(self.complete_labels)
         for i in range(len(np_outputs[0])):
             r = i % 2
-            c = r % 2
+            c = (i // 2) % 2
 
-            x, y = np_labels[:,i], np_outputs[:, i]
-            axs[r, c].scatter(x, y)
+            y, x = np_labels[:,i], np_outputs[:, i]
+            axs[r, c].scatter(x, y, alpha=0.1)
             axs[r, c].set_title(f'Command [{i}]')
-            axs[r, c].set_ylabel("outputs")
-            axs[r, c].set_xlabel("labels")
-            
-        fig.savefig(os.path.join(path, "outputs.png"))
+            axs[r, c].set_xlabel("outputs")
+            axs[r, c].set_ylabel("labels")
+        
+        fig.suptitle(name)
+        fig.savefig(os.path.join(path, name+".png"))
 
     
     def __str__(self) -> str:

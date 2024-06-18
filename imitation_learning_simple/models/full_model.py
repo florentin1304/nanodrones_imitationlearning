@@ -7,19 +7,17 @@ from models.regressor import MLPRegressor
 from models.visual_feature_extractors.FrontNet import Frontnet
 from models.visual_feature_extractors.MobileNetv2 import MobileNetv2
 
-visual_fe_dict = {"frontnet": Frontnet,
-                  "mobilenet": MobileNetv2}
+visual_fe_dict = {"frontnet": Frontnet(),
+                  "mobilenet": MobileNetv2()}
 
 class FullModel(nn.Module):
-    def __init__(self, visual_fe, input_type, h, w, history_len, output_size=4):
+    def __init__(self, visual_fe, history_len, output_size=4):
         super(FullModel, self).__init__()
         self.output_size = output_size
         self.history_len = history_len
 
         assert visual_fe_dict.get(visual_fe) is not None, f"Visual feature extractor '{visual_fe}' unrecognized"
-        self.vfe = visual_fe_dict[visual_fe](c=3 if input_type=="RGB" else 2, 
-                                             h=h,
-                                             w=w)
+        self.vfe = visual_fe_dict[visual_fe]
         self.vfe_output_shape = self.vfe.output_shape[0]
 
         self.input_to_classifier = self.vfe_output_shape

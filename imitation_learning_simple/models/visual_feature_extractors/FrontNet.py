@@ -53,7 +53,7 @@ FrontnetModel.configs = {
 
 
 class Frontnet(nn.Module):
-    def __init__(self, c=3, w=320, h=320, extr_c=32, fc_nodes=1920):
+    def __init__(self, c=1, w=320, h=320, extr_c=32, fc_nodes=1920):
         super(Frontnet, self).__init__()
 
         self.name = "Frontnet"
@@ -89,6 +89,9 @@ class Frontnet(nn.Module):
         out = l3.flatten(1)
 
         return out
+
+    def get_input_shape(self):
+        return (self.input_channels, self.height, self.width)
 
     def __get_output_size(self):
         device = next(self.parameters()).device

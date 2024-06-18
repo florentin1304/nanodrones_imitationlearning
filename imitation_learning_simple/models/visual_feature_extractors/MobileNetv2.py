@@ -4,7 +4,7 @@ import torch.nn as nn
 import torchvision
 
 class MobileNetv2(nn.Module):
-    def __init__(self, c=3):
+    def __init__(self, c=3, h=224, w=224):
         super(MobileNetv2, self).__init__()
         assert c==3, "Mobilenet c!=3 not implemented yet"
         self.input_channels = c
@@ -25,6 +25,8 @@ class MobileNetv2(nn.Module):
         x = x.mean([-2, -1])  # Global average pooling
         return x
 
+    def get_input_shape(self):
+        return (self.input_channels, self.height, self.width)
 
     def __get_output_size(self):
         device = next(self.parameters()).device

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, SubsetRandomSampler
 from torchvision.transforms import ToTensor, Normalize, Compose
 
 import numpy as np
@@ -13,6 +13,7 @@ import tqdm
 import wandb
 import argparse
 import json
+import copy
 
 from models.full_model import FullModel
 from utils.StackingImageDataset import StackingImageDataset
@@ -24,17 +25,43 @@ class Trainer:
     def __init__(self, args):
         self.args = args
 
+        ### Init Wandb
+        self.run_name = ""
+        self.run_name += str(self.args.visual_extractor) + "_"
+        self.run_name += str(self.args.input_type) + "_"
+        self.run_name += str(self.args.label_type) + "_"
+        self.run_name += "h" + str(self.args.hist_size) + "_"
+        self.group_name = copy.deepcopy(self.run_name)
+
+        self.run_name += f"seed{self.args.seed}" + "_" + self.get_random_string(5)
+
+        wandb.init(
+            mode=self.args.wandb_mode,
+            project="nanodrones_imitation_learning",
+            entity="udrea-florentin00",
+            name=self.run_name,
+            group=self.group_name,
+            config= vars(self.args)
+        )
+
         ### Get important paths
         self.curr_dir = os.path.dirname( os.path.abspath(__file__) )
         self.home_path = Path(self.curr_dir).parent.absolute()
-        self.dataset_path = os.path.join(self.home_path, "data")
-        self.weights_path = os.path.join(self.home_path, "imitation_learning_simple", "weights")
-        self.output_path = os.path.join(self.home_path, "imitation_learning_simple", "output")
+        self.dataset_path = os.path.join(self.home_path,"nanodrones_sim" , "data")
+        self.results_path = os.path.join(self.home_path, "imitation_learning_simple", "results")
+        self.output_path = os.path.join(self.results_path, self.run_name)
+        os.makedirs(self.output_path, exist_ok=True)
 
         ### Set seed
         self.set_seed(self.args.seed)
 
-        ### Get dataset and model type
+        ### Define Model
+        self.model = FullModel(visual_fe=self.args.visual_extractor, 
+                               history_len=self.args.hist_size, 
+                               output_size=4)
+        input_shape = self.model.vfe.get_input_shape()
+
+        ### Get dataset and split
         transform = None
         self.dataset = StackingImageDataset(
                     max_hist=self.args.hist_size,
@@ -43,25 +70,55 @@ class Trainer:
                     transform=transform,
                     input_type=self.args.input_type,
                     label_type=self.args.label_type,
-                    image_shape=(320, 320),
+                    input_shape=input_shape,
                     norm_input=not(self.args.avoid_input_normalization),
                     norm_label=not(self.args.avoid_label_normalization)
                 )
 
-        self.model = FullModel(visual_fe=self.args.visual_extractor, 
-                               input_type=self.args.input_type,
-                               history_len=self.args.hist_size, 
-                               h=320,
-                               w=320,
-                               output_size=4)
-        
+        ### TODO: Set different transformation, altrimenti non ha senso copiare i dataset
+        self.train_dataset = copy.copy(self.dataset)
+        self.val_dataset = copy.copy(self.dataset)
+        self.test_dataset = copy.copy(self.dataset)
+
+        train_ratio = 0.7
+        val_ratio = 0.2
+
+        len_dataset = len(self.dataset)
+        max_index_train = int(train_ratio*len_dataset)
+        max_index_val = int((train_ratio + val_ratio)*len_dataset)
+
+        all_indexes = np.arange(len_dataset)
+        train_indexes = all_indexes[:max_index_train]
+        val_indexes = all_indexes[max_index_train : max_index_val]
+        test_indexes = all_indexes[max_index_val:]
+
+        train_sampler = SubsetRandomSampler(train_indexes)
+        val_sampler = SubsetRandomSampler(val_indexes)
+        test_sampler = SubsetRandomSampler(test_indexes)
+
+        # Create DataLoader instances for train, validation, and test sets
+        self.train_loader = DataLoader(self.train_dataset, 
+                                       collate_fn=StackingImageDataset.padding_collate_fn, 
+                                       batch_size=self.args.batch_size, 
+                                       sampler=train_sampler,
+                                       num_workers=self.args.num_workers)
+        self.val_loader = DataLoader(self.val_dataset, 
+                                     collate_fn=StackingImageDataset.padding_collate_fn, 
+                                     sampler=val_sampler,
+                                     batch_size=self.args.batch_size,
+                                     num_workers=self.args.num_workers)
+        self.test_loader = DataLoader(self.test_dataset, 
+                                      collate_fn=StackingImageDataset.padding_collate_fn,
+                                      sampler=test_sampler,
+                                      batch_size=self.args.batch_size)
+
         # Load weights if necessary
         if self.args.load_model != "":
             if not(self.args.load_model.endswith(".pth") or self.args.load_model.endswith(".pt")):
                 raise Exception("Weights file should end with .pt or .pth")
                 
             self.model.load_state_dict(
-                torch.load( os.join.path(self.weights_path, self.args.load_model) )
+                torch.load( os.join.path(self.output_path, self.args.load_model) )
             )
 
         ### Get device
@@ -71,40 +128,8 @@ class Trainer:
         self.model.to(self.device)
         print(f"Working on {self.device}")
 
-        # Split dataset into train, validation, and test sets
-        train_ratio = 0.7
-        val_ratio = 0.2
-
-        train_size = int(train_ratio * len(self.dataset))
-        val_size = int(val_ratio * len(self.dataset))
-        test_size = len(self.dataset) - train_size - val_size
-
-        self.train_dataset, self.val_dataset, self.test_dataset = random_split(self.dataset, [train_size, val_size, test_size])
-
-        # Create DataLoader instances for train, validation, and test sets
-        self.train_loader = DataLoader(self.train_dataset, 
-                                       collate_fn=StackingImageDataset.padding_collate_fn, 
-                                       batch_size=self.args.batch_size, shuffle=True,
-                                       num_workers=8)
-        self.val_loader = DataLoader(self.val_dataset, 
-                                     collate_fn=StackingImageDataset.padding_collate_fn, 
-                                     batch_size=self.args.batch_size,
-                                     num_workers=8)
-        self.test_loader = DataLoader(self.test_dataset, 
-                                      collate_fn=StackingImageDataset.padding_collate_fn, 
-                                      batch_size=self.args.batch_size)
-
         # Define criterion
         self.criterion = MaskedMSELoss()  # Mean Squared Error loss for regression
-
-        ### Init Wandb
-        wandb.init(
-            mode=self.args.wandb_mode,
-            project="nanodrones_imitation_learning",
-            entity="udrea-florentin00",
-            name="megatest",
-            config= vars(self.args)
-        )
 
     def train(self):
         print("=== Start training ===")
@@ -126,21 +151,24 @@ class Trainer:
             print(f"Epoch [{epoch+1}/{self.args.num_epochs}], Train Loss: {epoch_loss:.4f}")
 
             ### Run validation
-            validation_loss = self.run_validation()            
+            validation_loss, mse, r2 = self.run_validation()            
             print(f"Validation Loss: {validation_loss:.4f}")
 
 
             ### Wandb logs
             wandb.log({"train_loss": epoch_loss,
                     "val_loss": validation_loss, 
-                    "epoch": epoch})
+                    "epoch": epoch,
+                    "mse": sum(mse)/len(mse),
+                    "r2": sum(r2)/len(r2)})
             
             ### Save model if best and early stopping
+            torch.save(self.model.state_dict(), os.path.join(self.output_path, "last.pth"))
             if validation_loss < best_val_loss:
                 print(f"Saving new model [New best loss {validation_loss:.4} vs Old best loss {best_val_loss:.4}]")
                 best_val_loss = validation_loss
                 waiting_epochs = 0
-                torch.save(self.model.state_dict(), os.path.join(self.weights_path, "TCN_best.pth"))
+                torch.save(self.model.state_dict(), os.path.join(self.output_path, "best.pth"))
             else:
                 waiting_epochs += 1
                 if waiting_epochs >= self.args.patience_epochs:
@@ -168,10 +196,10 @@ class Trainer:
             running_loss += loss.item() * images.size(0)
             num_samples += self.args.batch_size
 
-        wandb.log({"train_loss_running": running_loss / (num_samples+1e-5)})
         return running_loss / (num_samples+1e-5)
 
     def run_validation(self):
+        self.model.eval()
         performance = PerformanceCalculator()
         with torch.no_grad():
             pbar = tqdm.tqdm(self.val_loader)
@@ -195,26 +223,48 @@ class Trainer:
                 ###
 
         print(performance)
-        performance.plot("./")
-        wandb.log({"val_loss": running_loss / (num_samples+1e-5)})
-        return running_loss / (num_samples+1e-5)
+        performance.plot(self.output_path, name="last_validation_outputs")
+        return running_loss / (num_samples+1e-5), performance.mse(), performance.r2()
     
-    def run_test(self, save=True, plot_graphs=True):
-        # Test the model
+    def test(self):
         self.model.eval()
-        total_loss = 0.0
-        num_samples = 0
+        performance = PerformanceCalculator()
         with torch.no_grad():
-            for images, labels in self.test_loader:
-                images, labels = images.to(self.device), labels.to(self.device)
+            pbar = tqdm.tqdm(self.test_loader)
+            running_loss = 0
+            num_samples = 0
+            for images, labels, mask in pbar:
+                pbar.set_description(f"Test loss: {running_loss/(num_samples+1e-5) :.4}")
+
+                images, labels, mask = images.to(self.device), labels.to(self.device), mask.to(self.device)
+
                 outputs = self.model(images)
-                loss = self.criterion(outputs, labels)
-                total_loss += loss.item() * images.size(0)
-                num_samples += len(images)
-            
-        test_loss = total_loss / num_samples
-        wandb.log({"test_loss": test_loss})
-        print(f"Test Loss: {test_loss:.4f}") 
+
+                self.optimizer.zero_grad()
+                loss = self.criterion(outputs, labels, mask)
+                running_loss += loss.item() * images.size(0)
+                num_samples += self.args.batch_size
+
+                ###
+                for i in range(len(outputs)):
+                    performance.extend(outputs[i], labels[i]) 
+                ###
+
+        print(performance)
+        performance.plot(self.output_path, name="test_ouputs")
+        return running_loss / (num_samples+1e-5), performance.mse(), performance.r2()
+    
+    
+    def get_random_string(self, n: int):
+        random_string = ''
+        for _ in range(n):
+            if np.random.uniform() < 0.5:
+                i = np.random.randint(65, 91)
+            else:
+                i = np.random.randint(97, 123)
+
+            random_string += chr(i)
+        return random_string
 
     def set_seed(self, random_seed):
         random.seed(random_seed)
