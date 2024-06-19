@@ -6,7 +6,7 @@ import json
 import warnings
 from PIL import Image
 from torch.utils.data import Dataset
-from torchvision.transforms import Compose, Normalize, Resize, ToTensor, Grayscale
+from torchvision.transforms import Compose, Normalize, Resize, ToTensor, Grayscale, Lambda
 from utils.StatsCalculator import StatsCalculator
 
 class ImageDataset(Dataset):
@@ -103,6 +103,8 @@ class ImageDataset(Dataset):
                 means = [self.stats_dict["pencil_img"]['mean']/255]
                 std = [self.stats_dict["pencil_img"]['std']/255]
                 transformation_list.append(Normalize(means, std))
+                if self.input_shape[0] > 1:
+                    transformation_list.append(Lambda(lambda x: torch.cat([x for _ in range(self.input_shape[0])])))
                 
             self.transform_image = Compose(transforms=transformation_list)
 

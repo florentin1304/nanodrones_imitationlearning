@@ -73,7 +73,8 @@ class Frontnet(nn.Module):
         self.layer1 = ConvBlock(self.inplanes, self.inplanes, stride=2)
         self.layer2 = ConvBlock(self.inplanes, self.inplanes*2, stride=2)
         self.layer3 = ConvBlock(self.inplanes*2, self.inplanes*4, stride=2)
-
+        self.avgpool = torch.nn.AvgPool2d(kernel_size=5, stride=3)
+        
         self.input_shape = (self.input_channels, self.height, self.width)
         self.output_shape = self.__get_output_size()
 
@@ -86,7 +87,9 @@ class Frontnet(nn.Module):
         l1 = self.layer1(max_pool)
         l2 = self.layer2(l1)
         l3 = self.layer3(l2)
-        out = l3.flatten(1)
+
+        out = self.avgpool(l3)
+        out = torch.flatten(out, 1)
 
         return out
 
@@ -108,9 +111,9 @@ class ConvBlock(nn.Module):
     """Pre-activation version of the BasicBlock."""
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1):
+    def __init__(self, in_planes, planes, stride=1, padding=1):
         super(ConvBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=padding, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
         self.relu1 = nn.ReLU()
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
@@ -129,3 +132,6 @@ class ConvBlock(nn.Module):
         return out
     
 
+if __name__ == "__main__":
+    f = Frontnet()
+    print(f.output_shape)

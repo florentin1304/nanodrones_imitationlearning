@@ -19,15 +19,16 @@ class FullModel(nn.Module):
         assert visual_fe_dict.get(visual_fe) is not None, f"Visual feature extractor '{visual_fe}' unrecognized"
         self.vfe = visual_fe_dict[visual_fe]
         self.vfe_output_shape = self.vfe.output_shape[0]
-
         self.input_to_classifier = self.vfe_output_shape
+
         # add TCN if we have 
         if history_len > 0:
-            self.tcn = TCN(input_size=self.vfe_output_shape,
+            self.tcn = TCN(input_size=self.output_from_projector,
                            hidden_dims=[256 for _ in range( 1 + int(np.log2(history_len)) )])
             self.input_to_classifier = self.tcn.output_shape 
 
             
+        
         self.classifier = MLPRegressor(
             input_size=self.input_to_classifier,
             hidden_dims=[self.input_to_classifier//4],
