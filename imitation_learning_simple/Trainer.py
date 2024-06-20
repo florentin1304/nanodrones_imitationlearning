@@ -232,7 +232,6 @@ class Trainer:
         self.model.load_state_dict(
             torch.load(os.path.join(self.output_path, "best.pth"))
         )
-        torch.load( os.path.join(self.output_path, self.args.load_model) )
 
         self.model.eval()
         performance = PerformanceCalculator()
