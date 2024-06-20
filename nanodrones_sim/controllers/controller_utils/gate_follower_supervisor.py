@@ -109,7 +109,7 @@ class GateFollowerSupervisor(Supervisor):
         self.__display_gates()
 
         self.__pathplanner = PathPlanner(trajectory=trajectory, **config['pathplanner'])
-        if self.__display_path_flag: 
+        if self.__display_path_flag and self.recorder.mode == "off": 
             self.__display_path(trajectory)
             self.__display_balls()
         
@@ -161,13 +161,15 @@ class GateFollowerSupervisor(Supervisor):
         drone_yaw = rpy[-1]
         v_target, yaw_desired, des_height, fin = self.__pathplanner(drone_pos, drone_yaw, dpos_ego, self.__gate_square_poses, self.__current_waypoint)
         
+        self.__startRecording = True
         if robot.getTime() < self.__setup_time:
+            self.__startRecording = False
             v_target = [0,0]
             des_height = 1 
             self.__pathplanner.resetHist()
 
         # Show projection and target points
-        if self.__display_path_flag:
+        if self.__display_path_flag and self.recorder.mode == "off":
             current_pos_sp = self.__pathplanner.getCurrentSP()
             current_projection = self.__pathplanner.getCurrentProj()
             self.__update_balls(projection_point=current_projection, target_point=current_pos_sp)

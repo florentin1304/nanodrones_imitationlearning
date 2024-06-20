@@ -7,7 +7,7 @@ import warnings
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.transforms import Compose, Normalize, Resize, ToTensor, Grayscale, Lambda
-from utils.StatsCalculator import StatsCalculator
+# from utils.StatsCalculator import StatsCalculator
 
 class ImageDataset(Dataset):
     def __init__(self, 
@@ -90,10 +90,10 @@ class ImageDataset(Dataset):
 
         elif self.input_type == "GRY":
             self.get_image = lambda idx: self.__getRGBImage(idx)
+            transformation_list.append(Grayscale(num_output_channels=self.input_shape[0]))
             if self.norm_input:
                 means = self.stats_dict["grayscale_img"]['mean'] / 255
                 std = self.stats_dict["grayscale_img"]['std'] / 255
-                transformation_list.append(Grayscale(num_output_channels=self.input_shape[0]))
                 transformation_list.append(Normalize(means, std))
             self.transform_image = Compose(transforms=transformation_list)
 
@@ -189,3 +189,12 @@ class ImageDataset(Dataset):
     def getDataFrame(self):
         return self.data_frame
     
+# if __name__ == "__main__":
+#     import matplotlib.pyplot as plt
+#     d = ImageDataset(csv_dir="/home/florentin/Documents/repos/nanodrones_imitationlearning/nanodrones_sim/data", norm_input=True)
+#     img = d[155][0]
+#     print(img.shape)
+#     print(torch.mean(img), torch.std(img))
+#     plt.imshow(img.permute(1,2,0), cmap='gray')
+#     plt.show()
+
