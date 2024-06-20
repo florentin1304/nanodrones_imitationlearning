@@ -261,8 +261,8 @@ class Trainer:
         mse = performance.mse()
         r2 = performance.r2()
         wandb.log({"test_loss": running_loss / (num_samples+1e-5),
-                    "mse": sum(mse)/len(mse),
-                    "r2": sum(r2)/len(r2)})
+                    "test_mse": sum(mse)/len(mse),
+                    "test_r2": sum(r2)/len(r2)})
             
         print(performance)
         performance.plot(self.output_path, name="test_ouputs")
