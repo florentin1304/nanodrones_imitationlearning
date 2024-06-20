@@ -7,7 +7,7 @@ import warnings
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.transforms import Compose, Normalize, Resize, ToTensor, Grayscale, Lambda
-# from utils.StatsCalculator import StatsCalculator
+from utils.StatsCalculator import StatsCalculator
 
 class ImageDataset(Dataset):
     def __init__(self, 

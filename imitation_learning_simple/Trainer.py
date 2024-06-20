@@ -229,6 +229,11 @@ class Trainer:
         return running_loss / (num_samples+1e-5), performance.mse(), performance.r2()
     
     def test(self):
+        self.model.load_state_dict(
+            torch.load(os.path.join(self.output_path, "best.pth"))
+        )
+        torch.load( os.join.path(self.output_path, self.args.load_model) )
+        
         self.model.eval()
         performance = PerformanceCalculator()
         with torch.no_grad():
