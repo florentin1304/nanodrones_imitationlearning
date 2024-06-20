@@ -53,7 +53,7 @@ FrontnetModel.configs = {
 
 
 class Frontnet(nn.Module):
-    def __init__(self, c=1, w=320, h=320, extr_c=32, fc_nodes=1920):
+    def __init__(self, c=1, w=160, h=160, extr_c=32, fc_nodes=1920):
         super(Frontnet, self).__init__()
 
         self.name = "Frontnet"

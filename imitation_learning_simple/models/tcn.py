@@ -14,6 +14,7 @@ class TCN(nn.Module):
                 output_projection=output_size,
                 kernel_size=2,
                 dilation_reset = 8,
+                
                 input_shape='NLC' # batch, timesteps, features
         )
 

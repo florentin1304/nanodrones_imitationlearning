@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split, SubsetRandomSampler
 from torchvision.transforms import ToTensor, Normalize, Compose
+import torchinfo
 
 import numpy as np
 import random
@@ -59,6 +60,7 @@ class Trainer:
         self.model = FullModel(visual_fe=self.args.visual_extractor, 
                                history_len=self.args.hist_size, 
                                output_size=4)
+        self.get_model_stats()
         input_shape = self.model.vfe.get_input_shape()
 
         ### Get dataset and split
@@ -277,78 +279,24 @@ class Trainer:
 
         return torch.Generator().manual_seed(random_seed)
 
-    def compute_dataset_stats(self):
-        # TODO: HARDCODED!!! -> Rifare in modo che lo faccia per tutte le colonne, in modo generale
-        # fa popo cacare cosi oh
-        print("Computing dataset statistics...")
-        dataset = StackingImageDataset(csv_dir=self.dataset_path, norm_input=False, norm_output=False, transform=None, max_hist=-1)
+    def get_model_stats(self):
+        image_shape = self.model.vfe.get_input_shape()
+        feature_size = self.model.vfe_output_shape
+        history_size = self.model.history_len
+
+        image = torch.rand((1, 1, *image_shape))
+        history = torch.rand((1,history_size,feature_size))
+        hist_array_summary = str(torchinfo.summary(self.model, input_data=(image, history), verbose=0))
+
+        image = torch.rand((1, 1+history_size, *image_shape))
+        train_summary = str(torchinfo.summary(self.model, input_data=(image), verbose=0))
+
+        with open(os.path.join(self.output_path, "deploy_summary.txt"), 'w') as f:
+            f.write(hist_array_summary)
 
 
-        depth_channel_sum = torch.zeros(1)
-        depth_channel_sum_sq = torch.zeros(1)
-        pencil_channel_sum = torch.zeros(1)
-        pencil_channel_sum_sq = torch.zeros(1)
-        pixel_count = 0
-
-        label_sum = torch.zeros(4)
-        label_sum_sq = torch.zeros(4)
-        label_count = 0
-        
-        for i in tqdm.tqdm(range(len(dataset))):
-            img, label = dataset[i]
-            pencil_image = img[0:1, :, :]
-            depth_image = img[1:, :, :]
-
-            # Compute cumulative sum of pixel values and pixel count
-            pencil_channel_sum += torch.sum(pencil_image, dim=(1, 2))
-            pencil_channel_sum_sq += torch.sum(torch.square(pencil_image), dim=(1, 2))
-            depth_channel_sum += torch.sum(depth_image, dim=(1, 2))
-            depth_channel_sum_sq += torch.sum(torch.square(depth_image), dim=(1, 2))
-            pixel_count += img.shape[1] * img.shape[2]
-
-            label_sum += label
-            label_sum_sq += torch.square(label)
-            label_count +=1
-
-
-        # Calculate mean and standard deviation for each channel
-        mean = torch.Tensor([depth_channel_sum, pencil_channel_sum]) / pixel_count
-        std = torch.sqrt(torch.Tensor([depth_channel_sum_sq, pencil_channel_sum_sq]) / pixel_count - torch.square(mean))
-
-        label_mean = label_sum / label_count
-        label_std = torch.sqrt(label_sum_sq / label_count - torch.square(label_mean))
-
-        statistics = {
-            "depth_img": { 
-                "mean": [mean[0].item()], 
-                "std": [std[0].item()] 
-                },
-            "pencil_img": { 
-                "mean": [mean[1].item()], 
-                "std": [std[1].item()] 
-                },
-            "alt_command": { 
-                "mean": [label_mean[0].item()], 
-                "std": [label_std[0].item()] 
-                },
-            "roll_command": { 
-                "mean": [label_mean[1].item()], 
-                "std": [label_std[1].item()] 
-                },
-            "pitch_command": { 
-                "mean": [label_mean[2].item()], 
-                "std": [label_std[2].item()] 
-                },
-            "yaw_command": { 
-                "mean": [label_mean[3].item()], 
-                "std": [label_std[3].item()] 
-                }
-        }
-
-        os.makedirs(self.datastats_path, exist_ok=True)
-        with open(os.path.join(self.datastats_path, self.args.stats_file_name), 'w', encoding='utf-8') as f:
-            json.dump(statistics, f, ensure_ascii=False, indent=4)
-
-
+        with open(os.path.join(self.output_path, "train_summary.txt"), 'w') as f:
+            f.write(train_summary)
+            
 
 
