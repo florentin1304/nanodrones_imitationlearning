@@ -253,8 +253,16 @@ class Trainer:
                 ###
 
         print(performance)
+
+        mse = performance.mse()
+        r2 = performance.r2()
+        wandb.log({"test_loss": running_loss / (num_samples+1e-5),
+                    "mse": sum(mse)/len(mse),
+                    "r2": sum(r2)/len(r2)})
+            
+        print(performance)
         performance.plot(self.output_path, name="test_ouputs")
-        return running_loss / (num_samples+1e-5), performance.mse(), performance.r2()
+        return running_loss / (num_samples+1e-5), mse, r2 
     
     
     def get_random_string(self, n: int):
