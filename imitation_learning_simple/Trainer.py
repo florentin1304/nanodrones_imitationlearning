@@ -308,20 +308,26 @@ class Trainer:
 
         image = torch.rand((1, 1, *image_shape))
         history = torch.rand((1,history_size,feature_size))
-        deploy_summary = torchinfo.summary(self.model, input_data=(image, history), verbose=0) 
+        deploy_summary = torchinfo.summary(self.model, input_data=(image, history), verbose=0, depth=10,
+                                           col_names=["input_size",
+                                                    "output_size",
+                                                    "num_params",
+                                                    "params_percent",
+                                                    "kernel_size",
+                                                    "mult_adds",
+                                                    "trainable"])
         hist_array_summary = str(deploy_summary)
-        wandb.log({
-            "deploy_macs": deploy_summary.total_mult_adds,
-            "deploy_params": deploy_summary.total_params
-        })
 
         image = torch.rand((1, 1+history_size, *image_shape))
-        train_summary = torchinfo.summary(self.model, input_data=(image), verbose=0)
+        train_summary = torchinfo.summary(self.model, input_data=(image), verbose=0, depth=10, 
+                                          col_names=["input_size",
+                                                    "output_size",
+                                                    "num_params",
+                                                    "params_percent",
+                                                    "kernel_size",
+                                                    "mult_adds",
+                                                    "trainable"])
         train_summary_str = str(train_summary)
-        wandb.log({
-            "train_macs": train_summary.total_mult_adds,
-            "train_params": train_summary.total_params
-        })
         
         with open(os.path.join(self.output_path, "deploy_summary.txt"), 'w') as f:
             f.write(hist_array_summary)
@@ -329,6 +335,13 @@ class Trainer:
 
         with open(os.path.join(self.output_path, "train_summary.txt"), 'w') as f:
             f.write(train_summary_str)
-            
 
+        wandb.log({
+            "deploy_macs": deploy_summary.total_mult_adds,
+            "deploy_params": deploy_summary.total_params
+        })
 
+        wandb.log({
+            "train_macs": train_summary.total_mult_adds,
+            "train_params": train_summary.total_params
+        })
