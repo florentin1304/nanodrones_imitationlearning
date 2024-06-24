@@ -7,8 +7,14 @@ from models.regressor import MLPRegressor
 from models.visual_feature_extractors.FrontNet import Frontnet
 from models.visual_feature_extractors.MobileNetv2 import MobileNetv2
 
-visual_fe_dict = {"frontnet": Frontnet(),
-                  "mobilenet": MobileNetv2()}
+visual_fe_dict = {
+        "frontnet": Frontnet(),
+        "frontnet_basic": Frontnet(),
+        "frontnet_conv2avg": Frontnet(kind="conv2avg"),
+        "frontnet_avgonly": Frontnet(kind='avgonly'),
+        "frontnet_feedforward": Frontnet(kind='feedforward'),
+        "mobilenet": MobileNetv2()
+    }
 
 class FullModel(nn.Module):
     def __init__(self, visual_fe, history_len, output_size=4):
@@ -24,7 +30,7 @@ class FullModel(nn.Module):
         # add TCN if we have 
         if history_len > 0:
             self.tcn = TCN(input_size=self.input_to_classifier,
-                           hidden_dims=[128 for _ in range( 1 + int(np.log2(history_len)) )])
+                           hidden_dims=[self.input_to_classifier for i in range( 1 + int(np.log2(history_len)) )])
             self.input_to_classifier = self.tcn.output_shape 
 
             
@@ -78,3 +84,13 @@ class FullModel(nn.Module):
         
         ### features_output_tensor = (BATCH, TIME_STEP, OUTPUTS)
         return out
+    
+if __name__ == "__main__":
+    import torchinfo
+    f = FullModel(visual_fe="frontnet_basic", history_len=4)
+    image_shape = f.vfe.get_input_shape()
+    feature_size = f.vfe_output_shape
+    history_size = f.history_len
+
+    image = torch.rand((1, 1, *image_shape))
+    history = torch.rand((1,history_size,feature_size))

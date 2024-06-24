@@ -39,7 +39,12 @@ class MobileNetv2(nn.Module):
         return output_shape
 
 if __name__ == "__main__":
+    import torchinfo
     model = MobileNetv2()
     print(model.output_shape)
+    torchinfo.summary(model, input_size=(1,3,224,224))
+    
+
+
 
 

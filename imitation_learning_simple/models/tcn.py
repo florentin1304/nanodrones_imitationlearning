@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import pytorch_tcn
-from models.resnet import ResNet, BasicBlock
 
 
 class TCN(nn.Module):

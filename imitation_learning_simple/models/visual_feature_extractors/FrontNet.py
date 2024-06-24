@@ -51,13 +51,22 @@ FrontnetModel.configs = {
     "80x32":  dict(h=48, w=80,  c=32, fc_nodes=768),
 }
 
+class GlobalAveragePooling(nn.Module):
+    def __init__(self):
+        super(GlobalAveragePooling, self).__init__()
+        self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
+    
+    def forward(self, x):
+        x = self.global_avg_pool(x)
+        return x
 
 class Frontnet(nn.Module):
-    def __init__(self, c=1, w=160, h=160, extr_c=32, fc_nodes=1920):
+    def __init__(self, c=1, w=160, h=160, extr_c=16, kind="basic"):
         super(Frontnet, self).__init__()
 
         self.name = "Frontnet"
 
+        self.kind = kind
         self.input_channels = c
         self.width = w
         self.height = h
@@ -73,8 +82,27 @@ class Frontnet(nn.Module):
         self.layer1 = ConvBlock(self.inplanes, self.inplanes, stride=2)
         self.layer2 = ConvBlock(self.inplanes, self.inplanes*2, stride=2)
         self.layer3 = ConvBlock(self.inplanes*2, self.inplanes*4, stride=2)
-        self.avgpool = torch.nn.AvgPool2d(kernel_size=5, stride=3)
-        
+
+        if self.kind == "conv2avg":
+            self.conv2avg = nn.Sequential(
+                    ConvBlock(self.inplanes*4, self.inplanes*8, stride=1, padding=0),
+                    GlobalAveragePooling(),
+                    torch.nn.Flatten(1)
+            )
+        elif self.kind == "avgonly":
+            self.avgonly = nn.Sequential(
+                torch.nn.AvgPool2d(kernel_size=5, stride=3),
+                torch.nn.Flatten(1)
+            )
+        elif self.kind == "basic":
+            self.basic = torch.nn.Flatten(1)
+
+        elif self.kind == "feedforward":
+            self.feedforward = nn.Sequential(
+                torch.nn.Flatten(1),
+                nn.Linear((self.inplanes*4) * (5*5), 128)
+                )
+
         self.input_shape = (self.input_channels, self.height, self.width)
         self.output_shape = self.__get_output_size()
 
@@ -88,9 +116,13 @@ class Frontnet(nn.Module):
         l2 = self.layer2(l1)
         l3 = self.layer3(l2)
 
-        out = self.avgpool(l3)
-        out = torch.flatten(out, 1)
-
+        # l4 = self.layer4(l3)
+        out = l3
+        if self.kind == "conv2avg": out = self.conv2avg(out)
+        elif self.kind == "avgonly": out = self.avgonly(out)
+        elif self.kind == "basic": out = self.basic(out)
+        elif self.kind == "feedforward": out = self.feedforward(out)
+        else: raise Exception("AAAAAAAA")
         return out
 
     def get_input_shape(self):
@@ -111,12 +143,12 @@ class ConvBlock(nn.Module):
     """Pre-activation version of the BasicBlock."""
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1, padding=1):
+    def __init__(self, in_planes, planes, kernel=3, stride=1, padding=1):
         super(ConvBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=padding, bias=False)
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=kernel, stride=stride, padding=padding, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
         self.relu1 = nn.ReLU()
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=kernel, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(planes)
         self.relu2 = nn.ReLU()
 
@@ -133,5 +165,7 @@ class ConvBlock(nn.Module):
     
 
 if __name__ == "__main__":
-    f = Frontnet()
+    import torchinfo
+    f = Frontnet(kind="basic")
     print(f.output_shape)
+    torchinfo.summary(f, input_size=(1,1,160,160))

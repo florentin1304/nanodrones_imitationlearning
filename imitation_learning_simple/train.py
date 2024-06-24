@@ -17,7 +17,15 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=319029, help="Seed")
 
     # Train model/dataset settings
-    parser.add_argument("--visual_extractor", type=str, default="frontnet", choices=["frontnet", "mobilenet"], help="Type of model to use")
+    parser.add_argument("--visual_extractor", type=str, default="frontnet", choices=[
+        "frontnet",
+        "frontnet_basic",
+        "frontnet_conv2avg",
+        "frontnet_avgonly",
+        "frontnet_feedforward",
+        "mobilenet"
+    ], help="Type of model to use")
+    
     parser.add_argument("--input_type", type=str, default="GRY", choices=["GRY", "PEN"], help="Type of input to use: GRY is default image in grayscale, PEN applies pencil filter")
     parser.add_argument("--label_type", type=str, default="commands", choices=["commands", "d_commands", "setpoints", "d_setpoints"], help="Type of labels to use: commands or setpoints ('d_' means using its derivative)")
     parser.add_argument("--stats_file_name", type=str, default="stats.json", help="Name of the file containing the statistics (mean, std) of each column in dataset")

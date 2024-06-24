@@ -48,7 +48,7 @@ class Trainer:
         ### Get important paths
         self.curr_dir = os.path.dirname( os.path.abspath(__file__) )
         self.home_path = Path(self.curr_dir).parent.absolute()
-        self.dataset_path = os.path.join(self.home_path,"nanodrones_sim" , "data")
+        self.dataset_path = os.path.join(self.home_path, "nanodrones_sim", "data")
         self.results_path = os.path.join(self.home_path, "imitation_learning_simple", "results")
         self.output_path = os.path.join(self.results_path, self.run_name)
         os.makedirs(self.output_path, exist_ok=True)
@@ -188,7 +188,11 @@ class Trainer:
             pbar.set_description(f"Running loss: {running_loss/(num_samples+1e-5) :.4}")
 
             images, labels, mask = images.to(self.device), labels.to(self.device), mask.to(self.device)
+
             outputs = self.model(images)
+            outputs = outputs[:, -1:, :]
+            labels = labels[:, -1:, :]
+            mask = mask[:, -1:]
 
             self.optimizer.zero_grad()
             loss = self.criterion(outputs, labels, mask)
@@ -213,15 +217,18 @@ class Trainer:
                 images, labels, mask = images.to(self.device), labels.to(self.device), mask.to(self.device)
 
                 outputs = self.model(images)
+                outputs = outputs[:, -1:, :]
+                labels = labels[:, -1:, :]
+                mask = mask[:, -1:]
+                
 
-                self.optimizer.zero_grad()
                 loss = self.criterion(outputs, labels, mask)
                 running_loss += loss.item() * images.size(0)
                 num_samples += self.args.batch_size
 
                 ###
-                for i in range(len(outputs)):
-                    performance.extend(outputs[i], labels[i]) 
+                for i in range(len(outputs)): # for every batch element
+                    performance.extend(outputs[i][-1:], labels[i][-1:])
                 ###
 
         print(performance)
@@ -232,7 +239,7 @@ class Trainer:
         self.model.load_state_dict(
             torch.load(os.path.join(self.output_path, "best.pth"))
         )
-
+        
         self.model.eval()
         performance = PerformanceCalculator()
         with torch.no_grad():
@@ -245,15 +252,18 @@ class Trainer:
                 images, labels, mask = images.to(self.device), labels.to(self.device), mask.to(self.device)
 
                 outputs = self.model(images)
+                outputs = outputs[:, -1:, :]
+                labels = labels[:, -1:, :]
+                mask = mask[:, -1:]
+            
 
-                self.optimizer.zero_grad()
                 loss = self.criterion(outputs, labels, mask)
                 running_loss += loss.item() * images.size(0)
                 num_samples += self.args.batch_size
 
                 ###
-                for i in range(len(outputs)):
-                    performance.extend(outputs[i], labels[i]) 
+                for i in range(len(outputs)): # for every batch element
+                    performance.extend(outputs[i][-1:], labels[i][-1:]) 
                 ###
 
         print(performance)
@@ -298,17 +308,27 @@ class Trainer:
 
         image = torch.rand((1, 1, *image_shape))
         history = torch.rand((1,history_size,feature_size))
-        hist_array_summary = str(torchinfo.summary(self.model, input_data=(image, history), verbose=0))
+        deploy_summary = torchinfo.summary(self.model, input_data=(image, history), verbose=0) 
+        hist_array_summary = str(deploy_summary)
+        wandb.log({
+            "deploy_macs": deploy_summary.total_mult_adds,
+            "deploy_params": deploy_summary.total_params
+        })
 
         image = torch.rand((1, 1+history_size, *image_shape))
-        train_summary = str(torchinfo.summary(self.model, input_data=(image), verbose=0))
-
+        train_summary = torchinfo.summary(self.model, input_data=(image), verbose=0)
+        train_summary_str = str(train_summary)
+        wandb.log({
+            "train_macs": train_summary.total_mult_adds,
+            "train_params": train_summary.total_params
+        })
+        
         with open(os.path.join(self.output_path, "deploy_summary.txt"), 'w') as f:
             f.write(hist_array_summary)
 
 
         with open(os.path.join(self.output_path, "train_summary.txt"), 'w') as f:
-            f.write(train_summary)
+            f.write(train_summary_str)
             
 
 
