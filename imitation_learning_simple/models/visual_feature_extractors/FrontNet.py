@@ -166,6 +166,6 @@ class ConvBlock(nn.Module):
 
 if __name__ == "__main__":
     import torchinfo
-    f = Frontnet(kind="basic")
+    f = Frontnet(kind="avgonly")
     print(f.output_shape)
     torchinfo.summary(f, input_size=(1,1,160,160))

@@ -14,6 +14,13 @@ visual_fe_dict = {
         "frontnet_conv2avg": Frontnet(kind="conv2avg"),
         "frontnet_avgonly": Frontnet(kind='avgonly'),
         "frontnet_feedforward": Frontnet(kind='feedforward'),
+
+        "frontnet_big": Frontnet(extr_c=32),
+        "frontnet_basic_big": Frontnet(extr_c=32),
+        "frontnet_conv2avg_big": Frontnet(kind="conv2avg", extr_c=32),
+        "frontnet_avgonly_big": Frontnet(kind='avgonly', extr_c=32),
+        "frontnet_feedforward_big": Frontnet(kind='feedforward', extr_c=32),
+
         "mobilenet": MobileNetv2()
     }
 

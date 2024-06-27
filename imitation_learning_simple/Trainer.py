@@ -9,6 +9,7 @@ import numpy as np
 import random
 
 from pathlib import *
+from datetime import datetime
 import os
 import tqdm
 import wandb
@@ -31,16 +32,18 @@ class Trainer:
         self.run_name += str(self.args.visual_extractor) + "_"
         self.run_name += str(self.args.input_type) + "_"
         self.run_name += str(self.args.label_type) + "_"
-        self.run_name += "h" + str(self.args.hist_size) + "_"
+        self.run_name += "h" + str(self.args.hist_size)
         self.group_name = copy.deepcopy(self.run_name)
 
-        self.run_name += f"seed{self.args.seed}" + "_" + self.get_random_string(5)
+        datetime_string = datetime.strftime(datetime.now(), "y%y-m%m-d%d_h%H-m%M")
+        self.run_name_details = {datetime_string} + f"_seed{self.args.seed}" + "_" + self.get_random_string(5)
 
+        self.run_name_complete += "_" + self.run_name_details
         wandb.init(
             mode=self.args.wandb_mode,
             project="nanodrones_imitation_learning",
             entity="udrea-florentin00",
-            name=self.run_name,
+            name=self.run_name_with_seed,
             group=self.group_name,
             config= vars(self.args)
         )
@@ -50,7 +53,7 @@ class Trainer:
         self.home_path = Path(self.curr_dir).parent.absolute()
         self.dataset_path = os.path.join(self.home_path, "nanodrones_sim", "data")
         self.results_path = os.path.join(self.home_path, "imitation_learning_simple", "results")
-        self.output_path = os.path.join(self.results_path, self.run_name)
+        self.output_path = os.path.join(self.results_path, self.run_name, self.run_name_details)
         os.makedirs(self.output_path, exist_ok=True)
 
         ### Set seed
