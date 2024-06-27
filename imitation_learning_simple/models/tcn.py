@@ -12,8 +12,9 @@ class TCN(nn.Module):
                 num_channels = hidden_dims,
                 output_projection=output_size,
                 kernel_size=2,
-                dilation_reset = 8,
+                dilation_reset = 16,
                 
+                use_norm='layer_norm',
                 input_shape='NLC' # batch, timesteps, features
         )
 

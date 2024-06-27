@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 
 from models.tcn import TCN
+from models.my_tcn import TemporalConvNet
 from models.regressor import MLPRegressor
 from models.visual_feature_extractors.FrontNet import Frontnet
 from models.visual_feature_extractors.MobileNetv2 import MobileNetv2
@@ -32,6 +33,10 @@ class FullModel(nn.Module):
             self.tcn = TCN(input_size=self.input_to_classifier,
                            hidden_dims=[self.input_to_classifier for i in range( 1 + int(np.log2(history_len)) )])
             self.input_to_classifier = self.tcn.output_shape 
+            # self.tcn = TemporalConvNet(num_inputs=self.input_to_classifier, 
+            #                            num_channels=[self.input_to_classifier for i in range( 1 + int(np.log2(history_len)) )])
+            # self.input_to_classifier = self.input_to_classifier 
+            
 
             
         
