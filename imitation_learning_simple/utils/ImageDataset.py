@@ -3,11 +3,13 @@ import torch
 import pandas as pd
 import numpy as np
 import json
+import random
 import warnings
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.transforms import Compose, Normalize, Resize, ToTensor, Grayscale, Lambda
 from utils.StatsCalculator import StatsCalculator
+
 
 class ImageDataset(Dataset):
     def __init__(self, 
@@ -18,7 +20,8 @@ class ImageDataset(Dataset):
                  label_type="commands",
                  input_shape=(1, 320, 320),
                  norm_input=True,
-                 norm_label=True):
+                 norm_label=True,
+                 shuffle=True):
         """Image dataset
 
         Args:
@@ -33,7 +36,8 @@ class ImageDataset(Dataset):
         """
         self.csv_dir = csv_dir
         self.csv_files = [os.path.join(csv_dir, file) for file in os.listdir(csv_dir) if file.endswith('.csv')]
-
+        if shuffle:
+            random.shuffle(self.csv_files)
         
         # Initialize an empty DataFrame with columns
         self.data_frame = pd.DataFrame()
@@ -69,6 +73,7 @@ class ImageDataset(Dataset):
         self.norm_label = norm_label
         self.input_shape = input_shape
         self.transform = transform
+        
         self.__configure()
 
     def __configure(self):
@@ -105,6 +110,7 @@ class ImageDataset(Dataset):
                 transformation_list.append(Normalize(means, std))
                 if self.input_shape[0] > 1:
                     transformation_list.append(Lambda(lambda x: torch.cat([x for _ in range(self.input_shape[0])])))
+                
                 
             self.transform_image = Compose(transforms=transformation_list)
 
@@ -189,12 +195,20 @@ class ImageDataset(Dataset):
     def getDataFrame(self):
         return self.data_frame
     
-# if __name__ == "__main__":
-#     import matplotlib.pyplot as plt
-#     d = ImageDataset(csv_dir="/home/florentin/Documents/repos/nanodrones_imitationlearning/nanodrones_sim/data", norm_input=True)
-#     img = d[155][0]
-#     print(img.shape)
-#     print(torch.mean(img), torch.std(img))
-#     plt.imshow(img.permute(1,2,0), cmap='gray')
-#     plt.show()
+    def set_transforms(self, transform):
+        self.transform = transform
+        self.__configure()
+    
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+    d = ImageDataset(csv_dir="/home/florentin/Documents/repos/nanodrones_imitationlearning/nanodrones_sim/data", 
+                     input_type="GRY",
+                     input_shape=(1,160,160),
+                     norm_input=True)
+    for i in range(10):
+        img = d[235][0]
+        print(img.shape)
+        print(torch.mean(img), torch.std(img))
+        plt.imshow(img.permute(1,2,0), cmap='gray')
+        plt.show()
 

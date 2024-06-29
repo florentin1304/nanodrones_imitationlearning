@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split, SubsetRandomSampler
-from torchvision.transforms import ToTensor, Normalize, Compose
+import torchvision.transforms as transforms
 import torchinfo
 
 import numpy as np
@@ -21,6 +21,7 @@ from models.full_model import FullModel
 from utils.StackingImageDataset import StackingImageDataset
 from utils.MaskedMSELoss import MaskedMSELoss
 from utils.PerformanceCalculator import PerformanceCalculator
+from utils.myTransforms import AddGaussianNoise
 
 
 class Trainer:
@@ -36,14 +37,14 @@ class Trainer:
         self.group_name = copy.deepcopy(self.run_name)
 
         datetime_string = datetime.strftime(datetime.now(), "y%y-m%m-d%d_h%H-m%M")
-        self.run_name_details = {datetime_string} + f"_seed{self.args.seed}" + "_" + self.get_random_string(5)
-
-        self.run_name_complete += "_" + self.run_name_details
+        self.run_name_details = datetime_string + f"_seed{self.args.seed}" + "_" + self.get_random_string(5)
+        self.run_name_complete = self.run_name + "_" + self.run_name_details
+        
         wandb.init(
             mode=self.args.wandb_mode,
             project="nanodrones_imitation_learning",
             entity="udrea-florentin00",
-            name=self.run_name_with_seed,
+            name=self.run_name_complete,
             group=self.group_name,
             config= vars(self.args)
         )
@@ -51,7 +52,7 @@ class Trainer:
         ### Get important paths
         self.curr_dir = os.path.dirname( os.path.abspath(__file__) )
         self.home_path = Path(self.curr_dir).parent.absolute()
-        self.dataset_path = os.path.join(self.home_path, "nanodrones_sim", "data")
+        self.dataset_path = os.path.join(self.home_path, "data")
         self.results_path = os.path.join(self.home_path, "imitation_learning_simple", "results")
         self.output_path = os.path.join(self.results_path, self.run_name, self.run_name_details)
         os.makedirs(self.output_path, exist_ok=True)
@@ -81,9 +82,19 @@ class Trainer:
                 )
 
         ### TODO: Set different transformation, altrimenti non ha senso copiare i dataset
-        self.train_dataset = copy.copy(self.dataset)
-        self.val_dataset = copy.copy(self.dataset)
-        self.test_dataset = copy.copy(self.dataset)
+        train_transforms = transforms.Compose([
+                            transforms.ToPILImage(),
+                            transforms.ColorJitter(brightness=0.6, contrast=0.6, saturation=0.6, hue=0.5),  # Adjust brightness, contrast, saturation, hue
+                            transforms.RandomAdjustSharpness(sharpness_factor=2, p=0.5),  # Randomly adjust the sharpness
+                            transforms.RandomApply([transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 3))], p=0.5),  # Randomly apply Gaussian blur
+                            AddGaussianNoise(0, 5, 0.5)
+                        ])
+        
+        self.train_dataset = copy.deepcopy(self.dataset)
+        self.train_dataset.set_transforms(train_transforms)
+
+        self.val_dataset = copy.deepcopy(self.dataset)
+        self.test_dataset = copy.deepcopy(self.dataset)
 
         train_ratio = 0.7
         val_ratio = 0.2

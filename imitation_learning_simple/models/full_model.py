@@ -87,6 +87,9 @@ class FullModel(nn.Module):
         if self.history_len > 0:
             features_output_tensor = self.tcn(features_output_tensor)
 
+        ### Keep only the last timestep
+        features_output_tensor = features_output_tensor[:, -1:, :] 
+
         ### features_output_tensor = (BATCH, TIME_STEP, FEATURES)
         old_x_shape = features_output_tensor.shape
         new_x_shape = (-1, *features_output_tensor.shape[-1:])

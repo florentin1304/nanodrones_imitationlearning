@@ -23,6 +23,11 @@ if __name__ == "__main__":
         "frontnet_conv2avg",
         "frontnet_avgonly",
         "frontnet_feedforward",
+        "frontnet_big",
+        "frontnet_basic_big",
+        "frontnet_conv2avg_big",
+        "frontnet_avgonly_big",
+        "frontnet_feedforward_big",
         "mobilenet"
     ], help="Type of model to use")
     
@@ -46,7 +51,7 @@ if __name__ == "__main__":
     parser.add_argument("--disable_cuda", action="store_true", help="Even if cuda is available, dont use it")
 
     # Wandb arguments
-    parser.add_argument("--wandb_mode", type=str, default="disabled", choices=["online", "offline", "disabled"], help="Wandb mode")
+    parser.add_argument("--wandb_mode", type=str, default="online", choices=["online", "offline", "disabled"], help="Wandb mode")
     parser.add_argument("--wandb_group", type=str, default="auto", help="Wandb group name, if auto the trainer will give one")
     
 
